@@ -166,6 +166,7 @@ class DutyView(discord.ui.View):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+```python
 # 🔘 ELFOGADÁS GOMB A JELENTKEZÉSEKHEZ
 class AcceptView(discord.ui.View):
     def __init__(self, member_id, waiting_channel_id):
@@ -173,66 +174,401 @@ class AcceptView(discord.ui.View):
         self.member_id = member_id
         self.waiting_channel_id = waiting_channel_id
 
-    @discord.ui.button(label="✅ Elfogadás (Szerver megnyitása)", style=discord.ButtonStyle.green)
-    async def accept_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        leader_role = discord.utils.get(interaction.guild.roles, name="Leader")
-        
-        if (not leader_role or leader_role not in interaction.user.roles) and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
-            await interaction.response.send_message("❌ Ezt csak a **Leader** ranggal rendelkező személyek tehetik meg!", ephemeral=True)
+    @discord.ui.button(
+        label="✅ Elfogadás (Szerver megnyitása)",
+        style=discord.ButtonStyle.green,
+        custom_id="accept_member"
+    )
+    async def accept_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        guild = interaction.guild
+
+        if guild is None:
+            await interaction.response.send_message(
+                "❌ Ez a gomb csak Discord szerveren használható.",
+                ephemeral=True
+            )
             return
 
-        guild = interaction.guild
-        member = guild.get_member(self.member_id)
-        role = discord.utils.get(guild.roles, name="Frakciótag")
+        # Csak Leader / Admin / Szervertulajdonos használhatja
+        leader_role = discord.utils.get(
+            guild.roles,
+            name="Leader"
+        )
 
-        if member and role:
-            await member.add_roles(role)
+        is_leader = (
+            leader_role is not None
+            and leader_role in interaction.user.roles
+        )
+
+        is_admin = interaction.user.guild_permissions.administrator
+        is_owner = interaction.user.id == guild.owner_id
+
+        if not (is_leader or is_admin or is_owner):
+            await interaction.response.send_message(
+                "❌ Ezt csak a **Leader**, admin vagy a szerver tulajdonosa használhatja!",
+                ephemeral=True
+            )
+            return
+
+        # Megkeressük a jelentkező tagot
+        member = guild.get_member(self.member_id)
+
+        if member is None:
             try:
-                await member.send("🎉 **Sikeres felvétel!** A Leader elfogadta a jelentkezésedet, most már láthatod a frakció teljes szerverét!")
+                member = await guild.fetch_member(self.member_id)
+            except discord.NotFound:
+                await interaction.response.send_message(
+                    "❌ Ez a játékos már nincs a szerveren.",
+                    ephemeral=True
+                )
+                return
+            except discord.HTTPException:
+                await interaction.response.send_message(
+                    "❌ Nem sikerült lekérni a játékost. Próbáld újra.",
+                    ephemeral=True
+                )
+                return
+
+        # Megkeressük a Frakciótag rangot
+        role = discord.utils.get(
+            guild.roles,
+            name="Frakciótag"
+        )
+
+        if role is None:
+            await interaction.response.send_message(
+                "❌ Nem találom a **Frakciótag** szerepkört!\n"
+                "Hozd létre Discordon, vagy futtasd le újra a `/setup_frakcio` parancsot.",
+                ephemeral=True
+            )
+            return
+
+        # A bot saját legmagasabb szerepköre
+        bot_member = guild.me
+
+        if bot_member is None:
+            await interaction.response.send_message(
+                "❌ Nem sikerült lekérni a bot jogosultságait.",
+                ephemeral=True
+            )
+            return
+
+        bot_top_role = bot_member.top_role
+
+        # Ellenőrizzük a szerepkör-hierarchiát
+        if role >= bot_top_role:
+            await interaction.response.send_message(
+                "❌ **Nem tudom kiosztani a Frakciótag rangot!**\n\n"
+                "Discordban menj ide:\n"
+                "**Szerverbeállítások → Szerepkörök**\n\n"
+                "A bot szerepkörét húzd a **Frakciótag** szerepkör FÖLÉ.\n\n"
+                f"Bot legmagasabb rangja: **{bot_top_role.name}**\n"
+                f"Kiosztandó rang: **{role.name}**",
+                ephemeral=True
+            )
+            return
+
+        # Ellenőrizzük, hogy a botnak van-e Manage Roles joga
+        if not bot_member.guild_permissions.manage_roles:
+            await interaction.response.send_message(
+                "❌ A botnak nincs **Szerepkörök kezelése (Manage Roles)** jogosultsága!",
+                ephemeral=True
+            )
+            return
+
+        # Ha már megvan a rang
+        if role in member.roles:
+            await interaction.response.send_message(
+                f"⚠️ {member.mention} már rendelkezik a **Frakciótag** ranggal.",
+                ephemeral=True
+            )
+            return
+
+        # Először válaszolunk az interactionre
+        # Így akkor sem lesz Unknown Message,
+        # ha az eredeti jelentkezési üzenet közben megváltozott.
+        await interaction.response.send_message(
+            f"⏳ {member.mention} elfogadása folyamatban..."
+        )
+
+        # Rang kiosztása
+        try:
+            await member.add_roles(
+                role,
+                reason=f"Frakcióba felvétel - elfogadta: {interaction.user}"
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ **Nem sikerült kiosztani a Frakciótag rangot!**\n\n"
+                "Ellenőrizd, hogy:\n"
+                "• a botnak van **Szerepkörök kezelése** joga;\n"
+                "• a bot szerepköre a **Frakciótag** fölött van."
+            )
+            return
+
+        except discord.HTTPException as e:
+            await interaction.followup.send(
+                f"❌ Discord hiba történt a rang kiosztásakor: `{e}`"
+            )
+            return
+
+        # Sikeres felvétel
+        await interaction.followup.send(
+            f"✅ **{member.mention} sikeresen fel lett véve a frakcióba!**\n"
+            f"👤 Elfogadta: {interaction.user.mention}\n"
+            f"🎖️ Megkapta: **{role.name}**"
+        )
+
+        # Privát üzenet a tagnak
+        try:
+            await member.send(
+                "🎉 **Sikeres felvétel!**\n\n"
+                f"A Leader ({interaction.user.display_name}) elfogadta "
+                "a jelentkezésedet.\n"
+                "Most már láthatod a frakció teljes szerverét."
+            )
+        except discord.Forbidden:
+            # Ha a játékosnál tiltva vannak a DM-ek,
+            # attól még a felvétel sikeres.
+            pass
+
+        # Váróterem törlése
+        waiting_channel = guild.get_channel(self.waiting_channel_id)
+
+        if waiting_channel is not None:
+            try:
+                await waiting_channel.delete(
+                    reason=f"Frakcióba felvett tag: {member}"
+                )
             except discord.Forbidden:
+                await interaction.followup.send(
+                    "⚠️ A tag felvétele sikerült, de a privát várótermet "
+                    "nem tudtam törölni. A botnak nincs megfelelő "
+                    "csatornakezelési jogosultsága."
+                )
+            except discord.NotFound:
+                # Már törölve lett, nincs probléma.
+                pass
+            except discord.HTTPException:
                 pass
 
+        # A gomb kikapcsolása
+        button.disabled = True
+        button.label = "✅ Elfogadva"
+
+        try:
+            await interaction.message.edit(view=self)
+        except (discord.NotFound, discord.HTTPException):
+            # Ha az eredeti jelentkezési üzenet már nem létezik,
+            # nem állítjuk le emiatt a folyamatot.
+            pass
+```
+```python
+# 🔘 ELFOGADÁS GOMB A JELENTKEZÉSEKHEZ
+class AcceptView(discord.ui.View):
+    def __init__(self, member_id, waiting_channel_id):
+        super().__init__(timeout=None)
+        self.member_id = member_id
+        self.waiting_channel_id = waiting_channel_id
+
+    @discord.ui.button(
+        label="✅ Elfogadás (Szerver megnyitása)",
+        style=discord.ButtonStyle.green,
+        custom_id="accept_member"
+    )
+    async def accept_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        guild = interaction.guild
+
+        if guild is None:
+            await interaction.response.send_message(
+                "❌ Ez a gomb csak Discord szerveren használható.",
+                ephemeral=True
+            )
+            return
+
+        # Csak Leader / Admin / Szervertulajdonos használhatja
+        leader_role = discord.utils.get(
+            guild.roles,
+            name="Leader"
+        )
+
+        is_leader = (
+            leader_role is not None
+            and leader_role in interaction.user.roles
+        )
+
+        is_admin = interaction.user.guild_permissions.administrator
+        is_owner = interaction.user.id == guild.owner_id
+
+        if not (is_leader or is_admin or is_owner):
+            await interaction.response.send_message(
+                "❌ Ezt csak a **Leader**, admin vagy a szerver tulajdonosa használhatja!",
+                ephemeral=True
+            )
+            return
+
+        # Megkeressük a jelentkező tagot
+        member = guild.get_member(self.member_id)
+
+        if member is None:
+            try:
+                member = await guild.fetch_member(self.member_id)
+            except discord.NotFound:
+                await interaction.response.send_message(
+                    "❌ Ez a játékos már nincs a szerveren.",
+                    ephemeral=True
+                )
+                return
+            except discord.HTTPException:
+                await interaction.response.send_message(
+                    "❌ Nem sikerült lekérni a játékost. Próbáld újra.",
+                    ephemeral=True
+                )
+                return
+
+        # Megkeressük a Frakciótag rangot
+        role = discord.utils.get(
+            guild.roles,
+            name="Frakciótag"
+        )
+
+        if role is None:
+            await interaction.response.send_message(
+                "❌ Nem találom a **Frakciótag** szerepkört!\n"
+                "Hozd létre Discordon, vagy futtasd le újra a `/setup_frakcio` parancsot.",
+                ephemeral=True
+            )
+            return
+
+        # A bot saját legmagasabb szerepköre
+        bot_member = guild.me
+
+        if bot_member is None:
+            await interaction.response.send_message(
+                "❌ Nem sikerült lekérni a bot jogosultságait.",
+                ephemeral=True
+            )
+            return
+
+        bot_top_role = bot_member.top_role
+
+        # Ellenőrizzük a szerepkör-hierarchiát
+        if role >= bot_top_role:
+            await interaction.response.send_message(
+                "❌ **Nem tudom kiosztani a Frakciótag rangot!**\n\n"
+                "Discordban menj ide:\n"
+                "**Szerverbeállítások → Szerepkörök**\n\n"
+                "A bot szerepkörét húzd a **Frakciótag** szerepkör FÖLÉ.\n\n"
+                f"Bot legmagasabb rangja: **{bot_top_role.name}**\n"
+                f"Kiosztandó rang: **{role.name}**",
+                ephemeral=True
+            )
+            return
+
+        # Ellenőrizzük, hogy a botnak van-e Manage Roles joga
+        if not bot_member.guild_permissions.manage_roles:
+            await interaction.response.send_message(
+                "❌ A botnak nincs **Szerepkörök kezelése (Manage Roles)** jogosultsága!",
+                ephemeral=True
+            )
+            return
+
+        # Ha már megvan a rang
+        if role in member.roles:
+            await interaction.response.send_message(
+                f"⚠️ {member.mention} már rendelkezik a **Frakciótag** ranggal.",
+                ephemeral=True
+            )
+            return
+
+        # Először válaszolunk az interactionre
+        # Így akkor sem lesz Unknown Message,
+        # ha az eredeti jelentkezési üzenet közben megváltozott.
+        await interaction.response.send_message(
+            f"⏳ {member.mention} elfogadása folyamatban..."
+        )
+
+        # Rang kiosztása
+        try:
+            await member.add_roles(
+                role,
+                reason=f"Frakcióba felvétel - elfogadta: {interaction.user}"
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ **Nem sikerült kiosztani a Frakciótag rangot!**\n\n"
+                "Ellenőrizd, hogy:\n"
+                "• a botnak van **Szerepkörök kezelése** joga;\n"
+                "• a bot szerepköre a **Frakciótag** fölött van."
+            )
+            return
+
+        except discord.HTTPException as e:
+            await interaction.followup.send(
+                f"❌ Discord hiba történt a rang kiosztásakor: `{e}`"
+            )
+            return
+
+        # Sikeres felvétel
+        await interaction.followup.send(
+            f"✅ **{member.mention} sikeresen fel lett véve a frakcióba!**\n"
+            f"👤 Elfogadta: {interaction.user.mention}\n"
+            f"🎖️ Megkapta: **{role.name}**"
+        )
+
+        # Privát üzenet a tagnak
+        try:
+            await member.send(
+                "🎉 **Sikeres felvétel!**\n\n"
+                f"A Leader ({interaction.user.display_name}) elfogadta "
+                "a jelentkezésedet.\n"
+                "Most már láthatod a frakció teljes szerverét."
+            )
+        except discord.Forbidden:
+            # Ha a játékosnál tiltva vannak a DM-ek,
+            # attól még a felvétel sikeres.
+            pass
+
+        # Váróterem törlése
         waiting_channel = guild.get_channel(self.waiting_channel_id)
-        if waiting_channel:
-            await waiting_channel.delete()
 
-        await interaction.response.edit_message(
-            content=f"✅ **{member.mention if member else 'A játékos'}** el lett fogadva {interaction.user.mention} által! A privát váróterme törölve lett.",
-            embed=None,
-            view=None
-        )
+        if waiting_channel is not None:
+            try:
+                await waiting_channel.delete(
+                    reason=f"Frakcióba felvett tag: {member}"
+                )
+            except discord.Forbidden:
+                await interaction.followup.send(
+                    "⚠️ A tag felvétele sikerült, de a privát várótermet "
+                    "nem tudtam törölni. A botnak nincs megfelelő "
+                    "csatornakezelési jogosultsága."
+                )
+            except discord.NotFound:
+                # Már törölve lett, nincs probléma.
+                pass
+            except discord.HTTPException:
+                pass
 
-@bot.event
-async def on_ready():
-    print(f"✅ Bot elindult mint: {bot.user}")
+        # A gomb kikapcsolása
+        button.disabled = True
+        button.label = "✅ Elfogadva"
 
-# 🚪 ÚJ TAG BELÉPÉSE: EGYÉNI VÁRÓTEREM
-@bot.event
-async def on_member_join(member):
-    guild = member.guild
-    cat_varo = discord.utils.get(guild.categories, name="🚪 VÁRÓTERMEK") or await guild.create_category("🚪 VÁRÓTERMEK")
-    leader_role = discord.utils.get(guild.roles, name="Leader")
+        try:
+            await interaction.message.edit(view=self)
+        except (discord.NotFound, discord.HTTPException):
+            # Ha az eredeti jelentkezési üzenet már nem létezik,
+            # nem állítjuk le emiatt a folyamatot.
+            pass
+```
 
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        member: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-    }
-    if leader_role:
-        overwrites[leader_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
-
-    chan_name = f"váró-{member.name}".lower().replace(" ", "-")
-    user_chan = await guild.create_text_channel(chan_name, category=cat_varo, overwrites=overwrites)
-
-    await user_chan.send(f"Üdvözlünk {member.mention}! Ez a te privát várótermed. Kérlek várj türelemmel, amíg a Leader felveszi veled a kapcsolatot!")
-
-    app_chan = discord.utils.get(guild.text_channels, name="📋-jelentkezések")
-    if app_chan:
-        embed = discord.Embed(
-            title="🔔 Új tag várakozik!",
-            description=f"**Tag:** {member.mention}\n**Privát váróterme:** {user_chan.mention}",
-            color=discord.Color.gold()
-        )
-        await app_chan.send(embed=embed, view=AcceptView(member.id, user_chan.id))
 
 # 🎁 /ajandek (NYEREMÉNYJÁTÉK PARANCS)
 @bot.tree.command(name="ajandek", description="Nyereményjáték (Giveaway) indítása gombbal")
