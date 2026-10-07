@@ -596,6 +596,36 @@ class AcceptButton(discord.ui.Button):
         )
 
         # =====================================================
+        # 👋 BELÉPŐ / ÜDVÖZLŐ ÜZENET
+        # =====================================================
+
+        belepo_chan = discord.utils.get(
+            guild.text_channels,
+            name="👋-belépő"
+        )
+
+        if belepo_chan:
+            welcome_embed = discord.Embed(
+                title="👋 ÚJ FRAKCIÓTAG ÉRKEZETT!",
+                description=(
+                    f"🎉 Üdvözöljük a frakcióban, **{member.display_name}**!\n\n"
+                    f"👤 Tag: {member.mention}\n"
+                    f"🎖️ Rang: **{role.name}**\n\n"
+                    "Örülünk, hogy csatlakoztál hozzánk! "
+                    "Jó játékot és jó RP-t kívánunk! 🚀"
+                ),
+                color=discord.Color.green()
+            )
+            welcome_embed.set_thumbnail(url=member.display_avatar.url)
+            welcome_embed.set_footer(text="Üdvözlünk a frakcióban!")
+            welcome_embed.timestamp = datetime.datetime.now()
+
+            await belepo_chan.send(
+                content=f"👋 **Üdvözöljük {member.mention}!**",
+                embed=welcome_embed
+            )
+
+        # =====================================================
         # PRIVÁT ÜZENET
         # =====================================================
 
@@ -1255,6 +1285,10 @@ async def setup_frakcio(
     cat_info = await guild.create_category(
         "📌 INFORMÁCIÓK",
         overwrites=overwrites_hidden
+    )
+
+    await cat_info.create_text_channel(
+        "👋-belépő"
     )
 
     await cat_info.create_text_channel(
