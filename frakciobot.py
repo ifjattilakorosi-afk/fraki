@@ -424,6 +424,5 @@ async def everyone_cmd(interaction: discord.Interaction, uzenet: str):
             pass
 
     await interaction.response.send_message(f"✅ Az üzenet sikeresen kiküldve **{sent_count}** váróterembe!", ephemeral=True)
-import os
 
 bot.run(os.environ["MTU1NzM5MTM5NDA1MjY0MDg4OA.GYcKNs.iBF0K3q2U4atz_FSTHX9nFSjifTHVsW038jFoA"])
