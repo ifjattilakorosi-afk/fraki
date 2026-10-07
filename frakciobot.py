@@ -1770,6 +1770,99 @@ async def everyone_cmd(
 
 
 # =========================================================
+# 🚓 /frakcio_rendor
+# =========================================================
+
+@bot.tree.command(name="frakcio_rendor", description="Rendőrségi frakció teljes Discord szerkezete")
+async def frakcio_rendor(interaction: discord.Interaction):
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("❌ Ez a parancs csak Discord szerveren használható!", ephemeral=True)
+        return
+    if not (interaction.user.guild_permissions.administrator or interaction.user.id == guild.owner_id):
+        await interaction.response.send_message("❌ Ezt csak admin vagy a szerver tulajdonosa használhatja!", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    role = discord.utils.get(guild.roles, name="🚓 Rendőr") or await guild.create_role(name="🚓 Rendőr", color=discord.Color.blue())
+    leader = discord.utils.get(guild.roles, name="🚓 Rendőrség Vezetőség") or await guild.create_role(name="🚓 Rendőrség Vezetőség", color=discord.Color.dark_blue())
+    overwrites = {guild.default_role: discord.PermissionOverwrite(view_channel=False), role: discord.PermissionOverwrite(view_channel=True), leader: discord.PermissionOverwrite(view_channel=True)}
+    category = discord.utils.get(guild.categories, name="🚓 RENDŐRSÉG") or await guild.create_category("🚓 RENDŐRSÉG", overwrites=overwrites)
+    channels = [
+        ("📻-rádió", "Rendőrségi rádió / IC kommunikáció."), ("📜-rádió-szabályzat", "Rádióhasználati és kommunikációs szabályzat."),
+        ("📘-rendőrségi-szabályzat", "A rendőrség általános szabályzata."), ("🚔-járőr-információk", "Járőrözéshez és szolgálathoz szükséges információk."),
+        ("🚨-akciók", "Akciók, üldözések és taktikai műveletek."), ("🚗-járműpark", "Rendőrségi járművek, egységek és használatuk."),
+        ("🔫-felszerelés", "Felszerelések, fegyverek és szolgálati eszközök."), ("📋-feladatok", "Aktuális rendőrségi feladatok."),
+        ("⚖️-bírságok-eljárások", "Bírságok és RP eljárások."), ("📂-nyomozások", "Nyomozások és ügyek."),
+        ("📝-jelentések", "Szolgálati és intézkedési jelentések."), ("📢-közlemények", "Vezetőségi közlemények."), ("💬-rendőr-ooc", "Rendőrségi OOC beszélgetés.")
+    ]
+    created=0
+    for name,topic in channels:
+        if discord.utils.get(category.text_channels,name=name) is None:
+            await category.create_text_channel(name=name, topic=topic); created+=1
+    await interaction.followup.send(f"✅ **Rendőrségi frakció elkészült!**\n🚓 Kategória: {category.mention}\n🎖️ Rang: **{role.name}**\n📁 Új csatornák: **{created}**", ephemeral=True)
+
+# =========================================================
+# 🚑 /frakcio_mentos
+# =========================================================
+
+@bot.tree.command(name="frakcio_mentos", description="Mentőszolgálati frakció teljes Discord szerkezete")
+async def frakcio_mentos(interaction: discord.Interaction):
+    guild=interaction.guild
+    if guild is None:
+        await interaction.response.send_message("❌ Ez a parancs csak Discord szerveren használható!", ephemeral=True); return
+    if not (interaction.user.guild_permissions.administrator or interaction.user.id==guild.owner_id):
+        await interaction.response.send_message("❌ Ezt csak admin vagy a szerver tulajdonosa használhatja!", ephemeral=True); return
+    await interaction.response.defer(ephemeral=True)
+    role=discord.utils.get(guild.roles,name="🚑 Mentős") or await guild.create_role(name="🚑 Mentős",color=discord.Color.red())
+    leader=discord.utils.get(guild.roles,name="🚑 Mentőszolgálat Vezetőség") or await guild.create_role(name="🚑 Mentőszolgálat Vezetőség",color=discord.Color.dark_red())
+    overwrites={guild.default_role:discord.PermissionOverwrite(view_channel=False),role:discord.PermissionOverwrite(view_channel=True),leader:discord.PermissionOverwrite(view_channel=True)}
+    category=discord.utils.get(guild.categories,name="🚑 MENTŐSZOLGÁLAT") or await guild.create_category("🚑 MENTŐSZOLGÁLAT",overwrites=overwrites)
+    channels=[
+        ("📻-mentős-rádió","Mentőszolgálati rádió / IC kommunikáció."),("📜-rádió-szabályzat","Mentős rádiózási és kommunikációs szabályzat."),
+        ("📘-mentős-szabályzat","A mentőszolgálat általános szabályzata."),("🚑-szolgálati-információk","Szolgálathoz szükséges információk."),
+        ("🏥-kórházi-információk","Kórházi és betegellátási információk."),("🚨-riasztások","Aktuális riasztások és kivonulások."),
+        ("🩺-felszerelés","Orvosi felszerelések és használatuk."),("🚑-járműpark","Mentőautók és egyéb szolgálati járművek."),
+        ("📋-betegjelentések","RP beteg- és esetjelentések."),("📝-szolgálati-jelentések","Szolgálati jelentések."),
+        ("📢-közlemények","Vezetőségi közlemények."),("💬-mentős-ooc","Mentőszolgálati OOC beszélgetés.")
+    ]
+    created=0
+    for name,topic in channels:
+        if discord.utils.get(category.text_channels,name=name) is None:
+            await category.create_text_channel(name=name,topic=topic); created+=1
+    await interaction.followup.send(f"✅ **Mentőszolgálati frakció elkészült!**\n🚑 Kategória: {category.mention}\n🎖️ Rang: **{role.name}**\n📁 Új csatornák: **{created}**",ephemeral=True)
+
+# =========================================================
+# 🔧 /frakcio_szerelo
+# =========================================================
+
+@bot.tree.command(name="frakcio_szerelo", description="Szerelő frakció teljes Discord szerkezete")
+async def frakcio_szerelo(interaction: discord.Interaction):
+    guild=interaction.guild
+    if guild is None:
+        await interaction.response.send_message("❌ Ez a parancs csak Discord szerveren használható!",ephemeral=True); return
+    if not (interaction.user.guild_permissions.administrator or interaction.user.id==guild.owner_id):
+        await interaction.response.send_message("❌ Ezt csak admin vagy a szerver tulajdonosa használhatja!",ephemeral=True); return
+    await interaction.response.defer(ephemeral=True)
+    role=discord.utils.get(guild.roles,name="🔧 Szerelő") or await guild.create_role(name="🔧 Szerelő",color=discord.Color.orange())
+    leader=discord.utils.get(guild.roles,name="🔧 Szerelő Vezetőség") or await guild.create_role(name="🔧 Szerelő Vezetőség",color=discord.Color.dark_orange())
+    overwrites={guild.default_role:discord.PermissionOverwrite(view_channel=False),role:discord.PermissionOverwrite(view_channel=True),leader:discord.PermissionOverwrite(view_channel=True)}
+    category=discord.utils.get(guild.categories,name="🔧 SZERELŐ") or await guild.create_category("🔧 SZERELŐ",overwrites=overwrites)
+    channels=[
+        ("📻-szerelő-rádió","Szerelő rádió / IC kommunikáció."),("📜-szerelő-szabályzat","Szerelői és rádiózási szabályzat."),
+        ("📘-műhely-szabályzat","A műhely használatának szabályai."),("💰-szerelő-árlista","Szerelői szolgáltatások és árlista."),
+        ("🔧-munkalapok","Aktuális szerelési munkalapok."),("🚗-járművek","Javítandó és elkészült járművek."),
+        ("🛠️-alkatrészek","Alkatrészek és készletinformációk."),("📦-raktár","Raktár és készlet."),
+        ("📋-munkajelentések","Elvégzett munkák jelentései."),("💵-kassza-elszámolás","Munkadíjak és kassza elszámolások."),
+        ("📢-közlemények","Vezetőségi közlemények."),("💬-szerelő-ooc","Szerelői OOC beszélgetés.")
+    ]
+    created=0
+    for name,topic in channels:
+        if discord.utils.get(category.text_channels,name=name) is None:
+            await category.create_text_channel(name=name,topic=topic); created+=1
+    await interaction.followup.send(f"✅ **Szerelő frakció elkészült!**\n🔧 Kategória: {category.mention}\n🎖️ Rang: **{role.name}**\n📁 Új csatornák: **{created}**",ephemeral=True)
+
+
+# =========================================================
 # 🚀 BOT INDÍTÁSA
 # =========================================================
 
