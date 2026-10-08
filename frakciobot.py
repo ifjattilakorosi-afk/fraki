@@ -1,23 +1,25 @@
 import os
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import datetime
+import random
+import asyncio
 
 import discord
 from discord import app_commands
 from discord.ext import commands
-import datetime
-import random
 
 
 # =========================================================
-# 🌐 RENDER HEALTH SERVER
+# 🌐 RENDER HEALTH SERVER (24/7 MŰKÖDÉSHEZ)
 # =========================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Discord bot is online!")
+        self.wfile.write(b"Faction Bot is Running Perfectly!")
 
     def log_message(self, format, *args):
         pass
@@ -25,15 +27,18 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def start_web_server():
     port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    server.serve_forever()
+    try:
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
+        server.serve_forever()
+    except Exception as e:
+        print(f"[WEB SERVER ERROR] {e}")
 
 
 threading.Thread(target=start_web_server, daemon=True).start()
 
 
 # =========================================================
-# ⚙️ DISCORD BEÁLLÍTÁSOK
+# ⚙️ BOT BEÁLLÍTÁSOK & INTENTEK
 # =========================================================
 
 intents = discord.Intents.default()
@@ -42,27 +47,21 @@ intents.message_content = True
 intents.members = True
 
 
-# =========================================================
-# ⏱️ DUTY NYILVÁNTARTÁS
-# =========================================================
-
+# Global nyomonkövető szótárak a Duty-hoz
 duty_start_times = {}
 duty_total_seconds = {}
 
 
-# =========================================================
-# 🤖 BOT
-# =========================================================
-
 class FactionBot(commands.Bot):
-
     def __init__(self):
         super().__init__(
             command_prefix="!",
-            intents=intents
+            intents=intents,
+            help_command=None
         )
 
     async def setup_hook(self):
+        # Slash parancsok globális szinkronizálása
         await self.tree.sync()
 
 
@@ -70,357 +69,162 @@ bot = FactionBot()
 
 
 # =========================================================
-# 🎉 NYEREMÉNYJÁTÉK
+# 💬 JOGOSULTSÁG ELLENŐRZŐ SEGÉDFÜGGVÉNY
+# =========================================================
+
+def check_permission(ctx: commands.Context) -> bool:
+    if not ctx.guild:
+        return False
+    leader_role = discord.utils.get(ctx.guild.roles, name="Leader")
+    is_leader = leader_role is not None and leader_role in ctx.author.roles
+    is_admin = ctx.author.guild_permissions.administrator
+    is_owner = ctx.author.id == ctx.guild.owner_id
+    return is_leader or is_admin or is_owner
+
+
+# =========================================================
+# 🎉 NYEREMÉNYJÁTÉK VIEW
 # =========================================================
 
 class GiveawayView(discord.ui.View):
-
     def __init__(self, prize: str, host: discord.Member):
         super().__init__(timeout=None)
-
         self.prize = prize
         self.host = host
         self.participants = set()
 
-    # 🎉 JELENTKEZÉS
     @discord.ui.button(
         label="🎉 Jelentkezés (0)",
         style=discord.ButtonStyle.primary,
         custom_id="giveaway_join"
     )
-    async def join_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
+    async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
 
         if user_id in self.participants:
-
             self.participants.remove(user_id)
-
-            button.label = (
-                f"🎉 Jelentkezés ({len(self.participants)})"
-            )
-
-            await interaction.response.edit_message(
-                view=self
-            )
-
-            await interaction.followup.send(
-                "❌ Visszavontad a jelentkezésedet a nyereményjátékra!",
-                ephemeral=True
-            )
-
+            button.label = f"🎉 Jelentkezés ({len(self.participants)})"
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send("❌ Visszavontad a jelentkezésedet!", ephemeral=True)
         else:
-
             self.participants.add(user_id)
+            button.label = f"🎉 Jelentkezés ({len(self.participants)})"
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send("🎉 **Sikeresen jelentkeztél a nyereményjátékra!**", ephemeral=True)
 
-            button.label = (
-                f"🎉 Jelentkezés ({len(self.participants)})"
-            )
-
-            await interaction.response.edit_message(
-                view=self
-            )
-
-            await interaction.followup.send(
-                "🎉 **Sikeresen jelentkeztél a nyereményjátékra!** "
-                "Sok szerencsét!",
-                ephemeral=True
-            )
-
-    # 🎲 SORSOLÁS
     @discord.ui.button(
         label="🎲 Sorsolás",
         style=discord.ButtonStyle.green,
         custom_id="giveaway_roll"
     )
-    async def roll_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        leader_role = discord.utils.get(
-            interaction.guild.roles,
-            name="Leader"
-        )
-
-        is_leader = (
-            leader_role is not None
-            and leader_role in interaction.user.roles
-        )
-
+    async def roll_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        leader_role = discord.utils.get(guild.roles, name="Leader")
+        is_leader = leader_role is not None and leader_role in interaction.user.roles
         is_admin = interaction.user.guild_permissions.administrator
-        is_owner = interaction.user.id == interaction.guild.owner_id
+        is_owner = interaction.user.id == guild.owner_id
 
         if not (is_leader or is_admin or is_owner):
-
-            await interaction.response.send_message(
-                "❌ Ezt a gombot csak a **Leader**, admin vagy "
-                "szervertulajdonos használhatja!",
-                ephemeral=True
-            )
-
+            await interaction.response.send_message("❌ Ezt csak Leader, admin vagy tulajdonos használhatja!", ephemeral=True)
             return
 
         if not self.participants:
-
-            await interaction.response.send_message(
-                "⚠️ Nem jelentkezett senki a nyereményjátékra!",
-                ephemeral=True
-            )
-
+            await interaction.response.send_message("⚠️ Nem jelentkezett senki a nyereményjátékra!", ephemeral=True)
             return
 
-        winner_id = random.choice(
-            list(self.participants)
-        )
+        winner_id = random.choice(list(self.participants))
+        winner = guild.get_member(winner_id)
 
-        winner = interaction.guild.get_member(
-            winner_id
-        )
-
-        # GOMBOK LETILTÁSA
         for child in self.children:
             child.disabled = True
 
         embed = interaction.message.embeds[0]
-
         embed.title = "🎉 NYEREMÉNYJÁTÉK VÉGET ÉRT 🎉"
         embed.color = discord.Color.gold()
+        winner_mention = winner.mention if winner else f"<@{winner_id}>"
+        embed.add_field(name="🏆 Nyertes:", value=winner_mention, inline=False)
 
-        embed.add_field(
-            name="🏆 Nyertes:",
-            value=(
-                winner.mention
-                if winner
-                else f"<@{winner_id}>"
-            ),
-            inline=False
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=self
-        )
-
-        winner_mention = (
-            winner.mention
-            if winner
-            else f"<@{winner_id}>"
-        )
-
-        await interaction.channel.send(
-            f"🎊 **GRATULÁLUNK!** {winner_mention} "
-            f"megnyerte a következőt: **{self.prize}**!"
-        )
+        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.channel.send(f"🎊 **GRATULÁLUNK!** {winner_mention} megnyerte a következőt: **{self.prize}**!")
 
 
 # =========================================================
-# ⏱️ DUTY MÉRŐ
+# ⏱️ DUTY MÉRŐ VIEW
 # =========================================================
 
 class DutyView(discord.ui.View):
-
     def __init__(self):
         super().__init__(timeout=None)
 
-    # 🟢 DUTY BE
-    @discord.ui.button(
-        label="🟢 Duty Be",
-        style=discord.ButtonStyle.green,
-        custom_id="duty_be"
-    )
-    async def duty_be(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
+    @discord.ui.button(label="🟢 Duty Be", style=discord.ButtonStyle.green, custom_id="duty_be")
+    async def duty_be(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
 
         if user_id in duty_start_times:
-
-            await interaction.response.send_message(
-                "⚠️ Már szolgálatban vagy!",
-                ephemeral=True
-            )
-
+            await interaction.response.send_message("⚠️ Már szolgálatban vagy!", ephemeral=True)
             return
 
         duty_start_times[user_id] = datetime.datetime.now()
+        await interaction.response.send_message("🟢 **Szolgálatba léptél!** A bot elkezdte mérni az idődet.", ephemeral=True)
 
-        await interaction.response.send_message(
-            "🟢 **Szolgálatba léptél!** "
-            "A bot elkezdte mérni az idődet.",
-            ephemeral=True
-        )
-
-        log_channel = discord.utils.get(
-            interaction.guild.text_channels,
-            name="📋-szolgálati-napló"
-        )
-
+        log_channel = discord.utils.get(interaction.guild.text_channels, name="📋-szolgálati-napló")
         if log_channel:
+            await log_channel.send(f"🟢 **{interaction.user.mention}** szolgálatba lépett: <t:{int(datetime.datetime.now().timestamp())}:F>")
 
-            await log_channel.send(
-                f"🟢 **{interaction.user.mention}** "
-                f"szolgálatba lépett: "
-                f"<t:{int(datetime.datetime.now().timestamp())}:F>"
-            )
-
-    # 🔴 DUTY KI
-    @discord.ui.button(
-        label="🔴 Duty Ki",
-        style=discord.ButtonStyle.red,
-        custom_id="duty_ki"
-    )
-    async def duty_ki(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
+    @discord.ui.button(label="🔴 Duty Ki", style=discord.ButtonStyle.red, custom_id="duty_ki")
+    async def duty_ki(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
 
         if user_id not in duty_start_times:
-
-            await interaction.response.send_message(
-                "⚠️ Nem vagy szolgálatban!",
-                ephemeral=True
-            )
-
+            await interaction.response.send_message("⚠️ Nem vagy szolgálatban!", ephemeral=True)
             return
 
-        start_time = duty_start_times.pop(
-            user_id
-        )
-
+        start_time = duty_start_times.pop(user_id)
         now = datetime.datetime.now()
+        session_seconds = int((now - start_time).total_seconds())
+        duty_total_seconds[user_id] = duty_total_seconds.get(user_id, 0) + session_seconds
 
-        session_seconds = int(
-            (now - start_time).total_seconds()
-        )
+        hours, remainder = divmod(session_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        time_str = f"{hours} óra {minutes} perc"
 
-        duty_total_seconds[user_id] = (
-            duty_total_seconds.get(user_id, 0)
-            + session_seconds
-        )
+        await interaction.response.send_message(f"🔴 **Kiléptél a szolgálatból!**\nA mostani szolgálatod ideje: **{time_str}**", ephemeral=True)
 
-        hours, remainder = divmod(
-            session_seconds,
-            3600
-        )
-
-        minutes, seconds = divmod(
-            remainder,
-            60
-        )
-
-        time_str = (
-            f"{hours} óra "
-            f"{minutes} perc"
-        )
-
-        await interaction.response.send_message(
-            f"🔴 **Kiléptél a szolgálatból!**\n"
-            f"A mostani szolgálatod ideje: "
-            f"**{time_str}**",
-            ephemeral=True
-        )
-
-        log_channel = discord.utils.get(
-            interaction.guild.text_channels,
-            name="📋-szolgálati-napló"
-        )
-
+        log_channel = discord.utils.get(interaction.guild.text_channels, name="📋-szolgálati-napló")
         if log_channel:
-
             embed = discord.Embed(
                 title="🔴 Duty Leadás",
-                description=(
-                    f"**Tag:** {interaction.user.mention}\n"
-                    f"**Eltöltött idő:** {time_str}\n"
-                    f"**Kilépés:** "
-                    f"<t:{int(now.timestamp())}:F>"
-                ),
+                description=f"**Tag:** {interaction.user.mention}\n**Eltöltött idő:** {time_str}\n**Kilépés:** <t:{int(now.timestamp())}:F>",
                 color=discord.Color.red()
             )
+            await log_channel.send(embed=embed)
 
-            await log_channel.send(
-                embed=embed
-            )
-
-    # 📊 ÖSSZIDŐ
-    @discord.ui.button(
-        label="📊 Összidő",
-        style=discord.ButtonStyle.blurple,
-        custom_id="duty_osszido"
-    )
-    async def duty_osszido(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
+    @discord.ui.button(label="📊 Összidő", style=discord.ButtonStyle.blurple, custom_id="duty_osszido")
+    async def duty_osszido(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
-
-        total_sec = duty_total_seconds.get(
-            user_id,
-            0
-        )
+        total_sec = duty_total_seconds.get(user_id, 0)
 
         if user_id in duty_start_times:
-
-            current_session = int(
-                (
-                    datetime.datetime.now()
-                    - duty_start_times[user_id]
-                ).total_seconds()
-            )
-
+            current_session = int((datetime.datetime.now() - duty_start_times[user_id]).total_seconds())
             total_sec += current_session
-
-            status_text = (
-                "🟢 *Jelenleg is szolgálatban vagy.*"
-            )
-
+            status_text = "🟢 *Jelenleg is szolgálatban vagy.*"
         else:
+            status_text = "🔴 *Jelenleg nem vagy szolgálatban.*"
 
-            status_text = (
-                "🔴 *Jelenleg nem vagy szolgálatban.*"
-            )
-
-        hours, remainder = divmod(
-            total_sec,
-            3600
-        )
-
-        minutes, seconds = divmod(
-            remainder,
-            60
-        )
+        hours, remainder = divmod(total_sec, 3600)
+        minutes, seconds = divmod(remainder, 60)
 
         embed = discord.Embed(
             title="📊 Szolgálati Idő Statisztika",
             description=(
                 f"**Tag:** {interaction.user.mention}\n\n"
                 f"**Összesített szolgálati időd:**\n"
-                f"⏱️ **{hours} óra "
-                f"{minutes} perc "
-                f"{seconds} másodperc**\n\n"
+                f"⏱️ **{hours} óra {minutes} perc {seconds} másodperc**\n\n"
                 f"{status_text}"
             ),
             color=discord.Color.blue()
         )
-
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # =========================================================
@@ -428,1444 +232,564 @@ class DutyView(discord.ui.View):
 # =========================================================
 
 class AcceptButton(discord.ui.Button):
-
     def __init__(self, member_id, waiting_channel_id):
         super().__init__(
             label="✅ Elfogadás (Szerver megnyitása)",
             style=discord.ButtonStyle.green,
             custom_id=f"accept_member:{member_id}:{waiting_channel_id}"
         )
-
         self.member_id = member_id
         self.waiting_channel_id = waiting_channel_id
 
     async def callback(self, interaction: discord.Interaction):
-
         guild = interaction.guild
-
         if guild is None:
-            await interaction.response.send_message(
-                "❌ Ez a gomb csak Discord szerveren használható.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Ez a gomb csak szerveren használható.", ephemeral=True)
             return
 
-        # =====================================================
-        # LEADER / ADMIN / TULAJ
-        # =====================================================
-
-        leader_role = discord.utils.get(
-            guild.roles,
-            name="Leader"
-        )
-
-        is_leader = (
-            leader_role is not None
-            and leader_role in interaction.user.roles
-        )
-
+        leader_role = discord.utils.get(guild.roles, name="Leader")
+        is_leader = leader_role is not None and leader_role in interaction.user.roles
         is_admin = interaction.user.guild_permissions.administrator
         is_owner = interaction.user.id == guild.owner_id
 
         if not (is_leader or is_admin or is_owner):
-            await interaction.response.send_message(
-                "❌ Ezt csak a **Leader**, admin vagy "
-                "a szerver tulajdonosa használhatja!",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Ezt csak Leader, admin vagy tulajdonos használhatja!", ephemeral=True)
             return
 
-        # =====================================================
-        # JELENTKEZŐ KERESÉSE
-        # =====================================================
-
         member = guild.get_member(self.member_id)
-
         if member is None:
             try:
                 member = await guild.fetch_member(self.member_id)
             except discord.NotFound:
-                await interaction.response.send_message(
-                    "❌ Ez a játékos már nincs a szerveren.",
-                    ephemeral=True
-                )
-                return
-            except discord.HTTPException:
-                await interaction.response.send_message(
-                    "❌ Nem sikerült lekérni a játékost. Próbáld újra.",
-                    ephemeral=True
-                )
+                await interaction.response.send_message("❌ Ez a játékos már nincs a szerveren.", ephemeral=True)
                 return
 
-        # =====================================================
-        # FRAKCIÓTAG RANG
-        # =====================================================
-
-        role = discord.utils.get(
-            guild.roles,
-            name="Frakciótag"
-        )
-
+        role = discord.utils.get(guild.roles, name="Frakciótag")
         if role is None:
-            await interaction.response.send_message(
-                "❌ Nem találom a **Frakciótag** szerepkört!\n\n"
-                "Futtasd le először a `/setup_frakcio` parancsot.",
-                ephemeral=True
-            )
-            return
-
-        # =====================================================
-        # BOT ELLENŐRZÉSE
-        # =====================================================
-
-        bot_member = guild.me
-
-        if bot_member is None:
-            await interaction.response.send_message(
-                "❌ Nem sikerült lekérni a bot jogosultságait.",
-                ephemeral=True
-            )
-            return
-
-        bot_top_role = bot_member.top_role
-
-        if role >= bot_top_role:
-            await interaction.response.send_message(
-                "❌ **Nem tudom kiosztani a Frakciótag rangot!**\n\n"
-                "Discordban menj ide:\n"
-                "**Szerverbeállítások → Szerepkörök**\n\n"
-                "A bot szerepkörét húzd a **Frakciótag** szerepkör FÖLÉ.\n\n"
-                f"🤖 Bot legmagasabb rangja: **{bot_top_role.name}**\n"
-                f"🎖️ Kiosztandó rang: **{role.name}**",
-                ephemeral=True
-            )
-            return
-
-        if not bot_member.guild_permissions.manage_roles:
-            await interaction.response.send_message(
-                "❌ A botnak nincs **Szerepkörök kezelése (Manage Roles)** "
-                "jogosultsága!",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Nem találom a **Frakciótag** szerepkört! Hozd létre vagy futtasd a `/setup_frakcio` parancsot.", ephemeral=True)
             return
 
         if role in member.roles:
-            await interaction.response.send_message(
-                f"⚠️ {member.mention} már rendelkezik a **Frakciótag** ranggal.",
-                ephemeral=True
-            )
+            await interaction.response.send_message(f"⚠️ {member.mention} már rendelkezik a **Frakciótag** ranggal.", ephemeral=True)
             return
 
-        await interaction.response.send_message(
-            f"⏳ {member.mention} elfogadása folyamatban..."
-        )
-
-        # =====================================================
-        # RANG KIOSZTÁSA
-        # =====================================================
+        await interaction.response.send_message(f"⏳ {member.mention} elfogadása folyamatban...")
 
         try:
-            await member.add_roles(
-                role,
-                reason=f"Frakcióba felvétel - elfogadta: {interaction.user}"
-            )
-
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "❌ **Nem sikerült kiosztani a Frakciótag rangot!**\n\n"
-                "Ellenőrizd, hogy:\n"
-                "• a botnak van **Szerepkörök kezelése** joga;\n"
-                "• a bot szerepköre a **Frakciótag** fölött van."
-            )
+            await member.add_roles(role, reason=f"Frakcióba felvétel - elfogadta: {interaction.user}")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Hiba a rang kiosztásakor: `{e}`")
             return
 
-        except discord.HTTPException as e:
-            await interaction.followup.send(
-                f"❌ Discord hiba történt a rang kiosztásakor: `{e}`"
-            )
-            return
+        await interaction.followup.send(f"✅ **{member.mention} sikeresen fel lett véve a frakcióba!**")
 
-        # =====================================================
-        # SIKERES FELVÉTEL
-        # =====================================================
-
-        await interaction.followup.send(
-            f"✅ **{member.mention} sikeresen fel lett véve a frakcióba!**\n"
-            f"👤 Elfogadta: {interaction.user.mention}\n"
-            f"🎖️ Megkapta: **{role.name}**"
-        )
-
-        # =====================================================
-        # 👋 BELÉPŐ / ÜDVÖZLŐ ÜZENET
-        # =====================================================
-
-        belepo_chan = discord.utils.get(
-            guild.text_channels,
-            name="👋-belépő"
-        )
-
+        belepo_chan = discord.utils.get(guild.text_channels, name="👋-belépő")
         if belepo_chan:
             welcome_embed = discord.Embed(
                 title="👋 ÚJ FRAKCIÓTAG ÉRKEZETT!",
-                description=(
-                    f"🎉 Üdvözöljük a frakcióban, **{member.display_name}**!\n\n"
-                    f"👤 Tag: {member.mention}\n"
-                    f"🎖️ Rang: **{role.name}**\n\n"
-                    "Örülünk, hogy csatlakoztál hozzánk! "
-                    "Jó játékot és jó RP-t kívánunk! 🚀"
-                ),
+                description=f"🎉 Üdvözöljük a frakcióban, **{member.display_name}**!\n\n👤 Tag: {member.mention}\n🎖️ Rang: **{role.name}**",
                 color=discord.Color.green()
             )
-            welcome_embed.set_thumbnail(url=member.display_avatar.url)
-            welcome_embed.set_footer(text="Üdvözlünk a frakcióban!")
-            welcome_embed.timestamp = datetime.datetime.now()
-
-            await belepo_chan.send(
-                content=f"👋 **Üdvözöljük {member.mention}!**",
-                embed=welcome_embed
-            )
-
-        # =====================================================
-        # PRIVÁT ÜZENET
-        # =====================================================
+            await belepo_chan.send(content=f"👋 **Üdvözöljük {member.mention}!**", embed=welcome_embed)
 
         try:
-            await member.send(
-                "🎉 **Sikeres felvétel!**\n\n"
-                f"A Leader ({interaction.user.display_name}) "
-                "elfogadta a jelentkezésedet.\n\n"
-                "Most már láthatod a frakció teljes szerverét."
-            )
-        except discord.Forbidden:
+            await member.send("🎉 **Sikeres felvétel!** A Vezetőség elfogadta a jelentkezésedet.")
+        except Exception:
             pass
-
-        # =====================================================
-        # VÁRÓTEREM TÖRLÉSE
-        # =====================================================
 
         waiting_channel = guild.get_channel(self.waiting_channel_id)
-
-        if waiting_channel is not None:
+        if waiting_channel:
             try:
-                await waiting_channel.delete(
-                    reason=f"Frakcióba felvett tag: {member}"
-                )
-            except discord.Forbidden:
-                await interaction.followup.send(
-                    "⚠️ A tag felvétele sikerült, de a privát várótermet "
-                    "nem tudtam törölni.\n\n"
-                    "Ellenőrizd a bot **Csatornák kezelése** jogosultságát."
-                )
-            except discord.NotFound:
+                await waiting_channel.delete()
+            except Exception:
                 pass
-            except discord.HTTPException:
-                pass
-
-        # =====================================================
-        # GOMB LETILTÁSA
-        # =====================================================
-
-        self.disabled = True
-        self.label = "✅ Elfogadva"
-
-        try:
-            await interaction.message.edit(
-                view=self.view
-            )
-        except (discord.NotFound, discord.HTTPException):
-            pass
 
 
 class AcceptView(discord.ui.View):
-
     def __init__(self, member_id, waiting_channel_id):
         super().__init__(timeout=None)
-        self.add_item(
-            AcceptButton(
-                member_id,
-                waiting_channel_id
-            )
-        )
+        self.add_item(AcceptButton(member_id, waiting_channel_id))
 
 
 # =========================================================
-# 👤 ÚJ TAG AUTOMATIKUS JELENTKEZÉSE
+# 👤 AUTOMATIKUS JELENTKEZÉSI SZOBA BELÉPÉSKOR
 # =========================================================
 
 @bot.event
 async def on_member_join(member: discord.Member):
-
     guild = member.guild
-
-    waiting_category = discord.utils.get(
-        guild.categories,
-        name="🚪 VÁRÓTERMEK"
-    )
-
-    applications_channel = discord.utils.get(
-        guild.text_channels,
-        name="📋-jelentkezések"
-    )
-
-    leader_role = discord.utils.get(
-        guild.roles,
-        name="Leader"
-    )
-
-    subleader_role = discord.utils.get(
-        guild.roles,
-        name="Subleader"
-    )
+    waiting_category = discord.utils.get(guild.categories, name="🚪 VÁRÓTERMEK")
+    applications_channel = discord.utils.get(guild.text_channels, name="📋-jelentkezések")
+    leader_role = discord.utils.get(guild.roles, name="Leader")
+    subleader_role = discord.utils.get(guild.roles, name="Subleader")
 
     if waiting_category is None or applications_channel is None:
-        print(
-            f"[JELENTKEZÉS] Hiányzik a VÁRÓTERMEK kategória vagy "
-            f"a 📋-jelentkezések csatorna a(z) {guild.name} szerveren."
-        )
         return
 
-    # Ha valamilyen okból már van ehhez a taghoz váróterem,
-    # ne hozzunk létre még egyet.
     existing_channel = None
-
     for channel in waiting_category.text_channels:
         if channel.topic == f"FRAKCIOS_JELENTKEZES:{member.id}":
             existing_channel = channel
             break
 
-    if existing_channel is not None:
+    if existing_channel:
         waiting_channel = existing_channel
     else:
-
         overwrites = {
-            guild.default_role: discord.PermissionOverwrite(
-                view_channel=False
-            ),
-            member: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                attach_files=True,
-                embed_links=True
-            )
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            member: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
         }
+        if leader_role:
+            overwrites[leader_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_messages=True)
+        if subleader_role:
+            overwrites[subleader_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_messages=True)
 
-        if leader_role is not None:
-            overwrites[leader_role] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                manage_messages=True
-            )
-
-        if subleader_role is not None:
-            overwrites[subleader_role] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                manage_messages=True
-            )
-
-        safe_name = (
-            "".join(
-                c.lower() if c.isalnum() else "-"
-                for c in member.display_name
-            )
-            .strip("-")
-        )
-
-        if not safe_name:
-            safe_name = "tag"
-
-        safe_name = safe_name[:60]
-
-        channel_name = f"jelentkezés-{safe_name}-{member.id}"
+        safe_name = "".join(c.lower() if c.isalnum() else "-" for c in member.display_name).strip("-") or "tag"
+        channel_name = f"jelentkezés-{safe_name[:30]}-{member.id}"
 
         try:
             waiting_channel = await guild.create_text_channel(
                 name=channel_name[:100],
                 category=waiting_category,
                 topic=f"FRAKCIOS_JELENTKEZES:{member.id}",
-                overwrites=overwrites,
-                reason=f"Automatikus jelentkezési szoba: {member}"
+                overwrites=overwrites
             )
-
-        except discord.Forbidden:
-            print(
-                f"[JELENTKEZÉS] Nincs jogosultság várócsatorna létrehozásához: "
-                f"{member} ({member.id})"
-            )
-            return
-
-        except discord.HTTPException as e:
-            print(
-                f"[JELENTKEZÉS] Discord hiba a csatorna létrehozásakor: {e}"
-            )
+        except Exception as e:
+            print(f"[ERROR] Csatorna létrehozása sikertelen: {e}")
             return
 
         await waiting_channel.send(
-            f"👋 **Üdv a szerveren, {member.mention}!**\n\n"
-            "Ez a **saját privát jelentkezési szobád**.\n"
-            "Itt a vezetőség tud veled beszélni.\n\n"
-            "📋 A vezetőség a jelentkezésedet a "
-            "**📋-jelentkezések** csatornában tudja elfogadni.\n\n"
-            "⏳ Kérlek várj, amíg egy Leader felveszi veled a kapcsolatot."
+            f"👋 **Üdv a szerveren, {member.mention}!**\n"
+            "Ez a saját privát jelentkezési szobád. Kérlek várj, amíg a vezetőség felveszi veled a kapcsolatot."
         )
-
-    # =====================================================
-    # JELENTKEZÉS A VEZETŐSÉGI CSATORNÁBA
-    # =====================================================
 
     embed = discord.Embed(
         title="📥 ÚJ FRAKCIÓJELENTKEZÉS",
-        description=(
-            f"👤 **Jelentkező:** {member.mention}\n"
-            f"🆔 **ID:** `{member.id}`\n"
-            f"🔒 **Privát szoba:** {waiting_channel.mention}\n\n"
-            "A jelentkezővel a saját privát szobájában tudtok beszélni.\n"
-            "Más jelentkező ezt a szobát nem látja.\n\n"
-            "Ha elfogadjátok, nyomjátok meg az alábbi gombot."
-        ),
+        description=f"👤 **Jelentkező:** {member.mention}\n🆔 **ID:** `{member.id}`\n🔒 **Privát szoba:** {waiting_channel.mention}",
         color=discord.Color.blue()
     )
-
-    embed.set_footer(
-        text="Automatikus frakciójelentkezés"
-    )
-
-    embed.timestamp = datetime.datetime.now()
-
     try:
-        await applications_channel.send(
-            embed=embed,
-            view=AcceptView(
-                member.id,
-                waiting_channel.id
-            )
-        )
-    except discord.Forbidden:
-        print(
-            f"[JELENTKEZÉS] Nincs jogosultság üzenetet küldeni ide: "
-            f"{applications_channel.name}"
-        )
-    except discord.HTTPException as e:
-        print(
-            f"[JELENTKEZÉS] Discord hiba a jelentkezés kiküldésekor: {e}"
-        )
-
-
-# =========================================================
-# 🔄 RÉGI JELENTKEZÉSI GOMBOK VISSZATÖLTÉSE
-# =========================================================
-
-_views_loaded = False
+        await applications_channel.send(embed=embed, view=AcceptView(member.id, waiting_channel.id))
+    except Exception as e:
+        print(f"[ERROR] Jelentkezési üzenet küldése sikertelen: {e}")
 
 
 @bot.event
 async def on_ready():
-
-    global _views_loaded
-
-    if _views_loaded:
-        return
-
-    # A duty gombok újra működjenek Render újraindítás után is.
     bot.add_view(DutyView())
-
-    for guild in bot.guilds:
-
-        waiting_category = discord.utils.get(
-            guild.categories,
-            name="🚪 VÁRÓTERMEK"
-        )
-
-        if waiting_category is None:
-            continue
-
-        for channel in waiting_category.text_channels:
-
-            if not channel.topic:
-                continue
-
-            prefix = "FRAKCIOS_JELENTKEZES:"
-
-            if not channel.topic.startswith(prefix):
-                continue
-
-            try:
-                member_id = int(
-                    channel.topic[len(prefix):]
-                )
-            except ValueError:
-                continue
-
-            try:
-                bot.add_view(
-                    AcceptView(
-                        member_id,
-                        channel.id
-                    )
-                )
-            except ValueError:
-                pass
-
-    _views_loaded = True
-
-    print(
-        f"✅ Bejelentkezve: {bot.user} | "
-        f"Régi jelentkezési gombok betöltve."
-    )
-
+    print(f"✅ Bot elindult mint: {bot.user} | Slash (/) és ! parancsok aktívak!")
 
 
 # =========================================================
-# 🎁 /ajandek
+# ⚙️ SEGÉDFÜGGVÉNY FRAKCIÓ CSATORNÁK TÖMEGES LÉTREHOZÁSÁHOZ
 # =========================================================
 
-@bot.tree.command(
-    name="ajandek",
-    description="Nyereményjáték (Giveaway) indítása gombbal"
-)
-@app_commands.describe(
-    nyeremeny="Mi a nyeremény?"
-)
-async def ajandek(
-    interaction: discord.Interaction,
-    nyeremeny: str
-):
-
-    leader_role = discord.utils.get(
-        interaction.guild.roles,
-        name="Leader"
-    )
-
-    is_leader = (
-        leader_role is not None
-        and leader_role in interaction.user.roles
-    )
-
-    is_admin = (
-        interaction.user.guild_permissions.administrator
-    )
-
-    is_owner = (
-        interaction.user.id
-        == interaction.guild.owner_id
-    )
-
-    if not (
-        is_leader
-        or is_admin
-        or is_owner
-    ):
-
-        await interaction.response.send_message(
-            "❌ Ezt a parancsot csak a "
-            "**Leader**, admin vagy szervertulajdonos "
-            "használhatja!",
-            ephemeral=True
-        )
-
+async def build_faction_structure(ctx: commands.Context, category_name: str, role_name: str, leader_role_name: str, role_color: discord.Color, channels_list: list):
+    if not check_permission(ctx):
+        msg = "❌ Ezt a parancsot csak Leader, admin vagy tulajdonos használhatja!"
+        if ctx.interaction:
+            await ctx.interaction.response.send_message(msg, ephemeral=True)
+        else:
+            await ctx.send(msg)
         return
 
-    embed = discord.Embed(
-        title="🎁 NYEREMÉNYJÁTÉK! 🎁",
-        description=(
-            f"**Nyeremény:** {nyeremeny}\n\n"
-            "Kattints az alábbi "
-            "**🎉 Jelentkezés** gombra "
-            "a részvételhez!"
-        ),
-        color=discord.Color.purple()
-    )
+    if ctx.interaction:
+        await ctx.interaction.response.defer()
 
-    embed.set_footer(
-        text=f"Indította: {interaction.user.display_name}"
-    )
+    guild = ctx.guild
+    role = discord.utils.get(guild.roles, name=role_name) or await guild.create_role(name=role_name, color=role_color)
+    leader_role = discord.utils.get(guild.roles, name=leader_role_name) or await guild.create_role(name=leader_role_name, color=discord.Color.gold())
 
-    embed.timestamp = datetime.datetime.now()
-
-    view = GiveawayView(
-        prize=nyeremeny,
-        host=interaction.user
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        view=view
-    )
-
-
-# =========================================================
-# 👑 /remove
-# =========================================================
-
-@bot.tree.command(
-    name="remove",
-    description=(
-        "MINDEN csatorna, hangcsatorna és "
-        "kategória törlése"
-    )
-)
-async def remove_all(
-    interaction: discord.Interaction
-):
-
-    if interaction.user.id != interaction.guild.owner_id:
-
-        await interaction.response.send_message(
-            "❌ Ezt kizárólag a "
-            "**szerver tulajdonosa** használhatja!",
-            ephemeral=True
-        )
-
-        return
-
-    await interaction.response.send_message(
-        "💣 **A szerver összes csatornájának "
-        "törlése megkezdődött...**",
-        ephemeral=True
-    )
-
-    guild = interaction.guild
-
-    for channel in list(guild.channels):
-
-        try:
-            await channel.delete()
-
-        except Exception:
-            pass
-
-
-# =========================================================
-# 🧹 /clear
-# =========================================================
-
-@bot.tree.command(
-    name="clear",
-    description="Üzenetek törlése az adott csatornából"
-)
-@app_commands.describe(
-    mennyiseg="Hány üzenetet töröljön a bot?"
-)
-async def clear_messages(
-    interaction: discord.Interaction,
-    mennyiseg: int = 100
-):
-
-    leader_role = discord.utils.get(
-        interaction.guild.roles,
-        name="Leader"
-    )
-
-    is_leader = (
-        leader_role is not None
-        and leader_role in interaction.user.roles
-    )
-
-    is_admin = (
-        interaction.user.guild_permissions.administrator
-    )
-
-    is_owner = (
-        interaction.user.id
-        == interaction.guild.owner_id
-    )
-
-    if not (
-        is_leader
-        or is_admin
-        or is_owner
-    ):
-
-        await interaction.response.send_message(
-            "❌ Nincs jogosultságod "
-            "az üzenetek törléséhez!",
-            ephemeral=True
-        )
-
-        return
-
-    await interaction.response.defer(
-        ephemeral=True
-    )
-
-    try:
-
-        deleted = await interaction.channel.purge(
-            limit=mennyiseg
-        )
-
-        await interaction.followup.send(
-            f"🧹 Sikeresen törölve "
-            f"**{len(deleted)}** üzenet!",
-            ephemeral=True
-        )
-
-    except Exception as e:
-
-        await interaction.followup.send(
-            f"⚠️ Hiba történt a törlés során: "
-            f"{e}",
-            ephemeral=True
-        )
-
-
-# =========================================================
-# ⚡ /setup_frakcio
-# =========================================================
-
-@bot.tree.command(
-    name="setup_frakcio",
-    description=(
-        "Teljes, kibővített frakció "
-        "szerkezet kiépítése"
-    )
-)
-async def setup_frakcio(
-    interaction: discord.Interaction
-):
-
-    leader_role = discord.utils.get(
-        interaction.guild.roles,
-        name="Leader"
-    )
-
-    is_leader = (
-        leader_role is not None
-        and leader_role in interaction.user.roles
-    )
-
-    is_admin = (
-        interaction.user.guild_permissions.administrator
-    )
-
-    is_owner = (
-        interaction.user.id
-        == interaction.guild.owner_id
-    )
-
-    if not (
-        is_leader
-        or is_admin
-        or is_owner
-    ):
-
-        await interaction.response.send_message(
-            "❌ Ezt a parancsot csak a "
-            "**Leader**, admin vagy "
-            "szervertulajdonos használhatja!",
-            ephemeral=True
-        )
-
-        return
-
-    await interaction.response.defer()
-
-    guild = interaction.guild
-
-    # =====================================================
-    # RANGOK
-    # =====================================================
-
-    leader = (
-        leader_role
-        or await guild.create_role(
-            name="Leader",
-            color=discord.Color.red(),
-            permissions=discord.Permissions(
-                administrator=True
-            )
-        )
-    )
-
-    subleader = (
-        discord.utils.get(
-            guild.roles,
-            name="Subleader"
-        )
-        or await guild.create_role(
-            name="Subleader",
-            color=discord.Color.orange()
-        )
-    )
-
-    tag = (
-        discord.utils.get(
-            guild.roles,
-            name="Frakciótag"
-        )
-        or await guild.create_role(
-            name="Frakciótag",
-            color=discord.Color.blue()
-        )
-    )
-
-    # =====================================================
-    # JOGOSULTSÁGOK
-    # =====================================================
-
-    overwrites_hidden = {
-
-        guild.default_role:
-            discord.PermissionOverwrite(
-                view_channel=False
-            ),
-
-        tag:
-            discord.PermissionOverwrite(
-                view_channel=True
-            ),
-
-        leader:
-            discord.PermissionOverwrite(
-                view_channel=True
-            ),
-
-        subleader:
-            discord.PermissionOverwrite(
-                view_channel=True
-            )
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        role: discord.PermissionOverwrite(view_channel=True),
+        leader_role: discord.PermissionOverwrite(view_channel=True)
     }
 
-    overwrites_admin = {
+    category = discord.utils.get(guild.categories, name=category_name) or await guild.create_category(category_name, overwrites=overwrites)
 
-        guild.default_role:
-            discord.PermissionOverwrite(
-                view_channel=False
-            ),
+    created_count = 0
+    for ch_name, ch_topic in channels_list:
+        if discord.utils.get(category.text_channels, name=ch_name) is None:
+            await category.create_text_channel(name=ch_name, topic=ch_topic)
+            created_count += 1
 
-        leader:
-            discord.PermissionOverwrite(
-                view_channel=True
-            ),
-
-        subleader:
-            discord.PermissionOverwrite(
-                view_channel=True
-            )
-    }
-
-    # =====================================================
-    # VÁRÓTERMEK
-    # =====================================================
-
-    waiting_overwrites = {
-        guild.default_role: discord.PermissionOverwrite(
-            view_channel=False
-        ),
-        leader: discord.PermissionOverwrite(
-            view_channel=True
-        ),
-        subleader: discord.PermissionOverwrite(
-            view_channel=True
-        )
-    }
-
-    cat_varo = discord.utils.get(
-        guild.categories,
-        name="🚪 VÁRÓTERMEK"
-    )
-
-    if cat_varo is None:
-        cat_varo = await guild.create_category(
-            "🚪 VÁRÓTERMEK",
-            overwrites=waiting_overwrites
-        )
+    msg = f"✅ **{category_name} frakció szerkezete sikeresen kiépítve!**\n📁 Kategória: {category.mention}\n📄 Új csatornák: **{created_count}**"
+    if ctx.interaction:
+        await ctx.interaction.followup.send(msg)
     else:
-        await cat_varo.edit(
-            overwrites=waiting_overwrites
-        )
-
-    # =====================================================
-    # 1. INFORMÁCIÓK
-    # =====================================================
-
-    cat_info = await guild.create_category(
-        "📌 INFORMÁCIÓK",
-        overwrites=overwrites_hidden
-    )
-
-    await cat_info.create_text_channel(
-        "👋-belépő"
-    )
-
-    await cat_info.create_text_channel(
-        "📢-bejelentések"
-    )
-
-    await cat_info.create_text_channel(
-        "📜-szabályzat"
-    )
-
-    await cat_info.create_text_channel(
-        "🎖️-rangok-és-fizetések"
-    )
-
-    await cat_info.create_text_channel(
-        "📝-minták-és-nyomtatványok"
-    )
-
-    await cat_info.create_text_channel(
-        "🚗-járműpark-és-kulcsok"
-    )
-
-    await cat_info.create_text_channel(
-        "❓-gyakori-kérdések"
-    )
-
-    # =====================================================
-    # 2. IC ÉLET
-    # =====================================================
-
-    cat_ic_elet = await guild.create_category(
-        "💼 IC ÉLET",
-        overwrites=overwrites_hidden
-    )
-
-    await cat_ic_elet.create_text_channel(
-        "💬-ic-chat"
-    )
-
-    await cat_ic_elet.create_text_channel(
-        "📸-ic-fotók-és-kamera"
-    )
-
-    await cat_ic_elet.create_text_channel(
-        "📝-szabadságkérelmek"
-    )
-
-    await cat_ic_elet.create_text_channel(
-        "📋-ic-ötletek-és-reformok"
-    )
-
-    await cat_ic_elet.create_text_channel(
-        "📂-ic-adatok"
-    )
-
-    # =====================================================
-    # 3. OOC ÉLET
-    # =====================================================
-
-    cat_ooc = await guild.create_category(
-        "💭 OOC ÉLET",
-        overwrites=overwrites_hidden
-    )
-
-    await cat_ooc.create_text_channel(
-        "💭-ooc-chat"
-    )
-
-    await cat_ooc.create_text_channel(
-        "📷-rp-élményképek"
-    )
-
-    await cat_ooc.create_text_channel(
-        "💡-ötletek-és-javaslatok"
-    )
-
-    await cat_ooc.create_text_channel(
-        "😂-mémek-és-offtopic"
-    )
-
-    # =====================================================
-    # 4. IC MŰKÖDÉS & DUTY
-    # =====================================================
-
-    cat_ic = await guild.create_category(
-        "💼 IC MŰKÖDÉS & DUTY",
-        overwrites=overwrites_hidden
-    )
-
-    duty_chan = await cat_ic.create_text_channel(
-        "⏰-duty-mérő"
-    )
-
-    await cat_ic.create_text_channel(
-        "📋-szolgálati-napló"
-    )
-
-    await cat_ic.create_text_channel(
-        "📦-frakció-széf-és-raktár"
-    )
-
-    await cat_ic.create_text_channel(
-        "⚔️-akciók-és-tervek"
-    )
-
-    await cat_ic.create_text_channel(
-        "🤝-diplomácia"
-    )
-
-    await cat_ic.create_text_channel(
-        "💰-kassza-és-elszámolás"
-    )
-
-    embed_duty = discord.Embed(
-        title="⏰ Szolgálati Idő Mérő (Duty)",
-        description=(
-            "Használd az alábbi gombokat "
-            "a szolgálatba lépéshez, "
-            "kilépéshez és az összidőd "
-            "ellenőrzéséhez!\n\n"
-            "🟢 **Duty Be** - "
-            "Szolgálat megkezdése\n"
-            "🔴 **Duty Ki** - "
-            "Szolgálat befejezése\n"
-            "📊 **Összidő** - "
-            "Eddigi összesített időd lekérése"
-        ),
-        color=discord.Color.blue()
-    )
-
-    await duty_chan.send(
-        embed=embed_duty,
-        view=DutyView()
-    )
-
-    # =====================================================
-    # 5. VEZETŐSÉG
-    # =====================================================
-
-    cat_vez = await guild.create_category(
-        "🔒 VEZETŐSÉG",
-        overwrites=overwrites_admin
-    )
-
-    await cat_vez.create_text_channel(
-        "🔒-vezetőségi-chat"
-    )
-
-    await cat_vez.create_text_channel(
-        "📋-jelentkezések"
-    )
-
-    await cat_vez.create_text_channel(
-        "⚠️-figyelmeztetések"
-    )
-
-    await cat_vez.create_text_channel(
-        "🚫-feketelista"
-    )
-
-    await cat_vez.create_text_channel(
-        "📑-vezetőségi-jegyzetek"
-    )
-
-    # =====================================================
-    # 6. HANGCSATORNÁK
-    # =====================================================
-
-    cat_voice = await guild.create_category(
-        "🔊 HANGCSATORNÁK",
-        overwrites=overwrites_hidden
-    )
-
-    await cat_voice.create_voice_channel(
-        "🔊 OOC Beszélgető 1"
-    )
-
-    await cat_voice.create_voice_channel(
-        "🔊 OOC Beszélgető 2"
-    )
-
-    await cat_voice.create_voice_channel(
-        "🔊 Rádió 1 [IC / RP]"
-    )
-
-    await cat_voice.create_voice_channel(
-        "🔊 Rádió 2 [IC / RP]"
-    )
-
-    await cat_voice.create_voice_channel(
-        "🔊 Akció / Taktikai 1"
-    )
-
-    await cat_voice.create_voice_channel(
-        "🔊 Akció / Taktikai 2"
-    )
-
-    await cat_voice.create_voice_channel(
-        "💤 AFK / Inaktív"
-    )
-
-    await cat_voice.create_voice_channel(
-        "🔒 Vezetőségi Tárgyaló",
-        overwrites=overwrites_admin
-    )
-
-    await interaction.followup.send(
-        "✅ **A szerverstruktúra sikeresen "
-        "létrejött!**"
-    )
-
-
-# =========================================================
-# 📢 /bejelentes
-# =========================================================
-
-@bot.tree.command(
-    name="bejelentes",
-    description=(
-        "Hivatalos bejelentés kiküldése "
-        "a bejelentések csatornába"
-    )
-)
-@app_commands.describe(
-    cim="A bejelentés címe",
-    uzenet="A bejelentés szövege"
-)
-async def bejelentes(
-    interaction: discord.Interaction,
-    cim: str,
-    uzenet: str
-):
-
-    leader_role = discord.utils.get(
-        interaction.guild.roles,
-        name="Leader"
-    )
-
-    is_leader = (
-        leader_role is not None
-        and leader_role in interaction.user.roles
-    )
-
-    is_admin = (
-        interaction.user.guild_permissions.administrator
-    )
-
-    is_owner = (
-        interaction.user.id
-        == interaction.guild.owner_id
-    )
-
-    if not (
-        is_leader
-        or is_admin
-        or is_owner
-    ):
-
-        await interaction.response.send_message(
-            "❌ Ezt csak a **Leader**, admin vagy "
-            "szervertulajdonos használhatja!",
-            ephemeral=True
-        )
-
-        return
-
-    chan = discord.utils.get(
-        interaction.guild.text_channels,
-        name="📢-bejelentések"
-    )
-
-    if chan:
-
-        embed = discord.Embed(
-            title=f"📢 {cim}",
-            description=uzenet,
-            color=discord.Color.red()
-        )
-
-        embed.set_footer(
-            text=f"Kiadta: {interaction.user.display_name}"
-        )
-
-        embed.timestamp = datetime.datetime.now()
-
-        await chan.send(
-            content="@everyone",
-            embed=embed
-        )
-
-        await interaction.response.send_message(
-            "✅ Bejelentés kiküldve!",
-            ephemeral=True
-        )
-
-
-# =========================================================
-# ⚠️ /warn
-# =========================================================
-
-@bot.tree.command(
-    name="warn",
-    description="Figyelmeztetés adása egy tagnak"
-)
-@app_commands.describe(
-    tag="A figyelmeztetett tag",
-    indok="A figyelmeztetés indoka"
-)
-async def warn(
-    interaction: discord.Interaction,
-    tag: discord.Member,
-    indok: str
-):
-
-    leader_role = discord.utils.get(
-        interaction.guild.roles,
-        name="Leader"
-    )
-
-    is_leader = (
-        leader_role is not None
-        and leader_role in interaction.user.roles
-    )
-
-    is_admin = (
-        interaction.user.guild_permissions.administrator
-    )
-
-    is_owner = (
-        interaction.user.id
-        == interaction.guild.owner_id
-    )
-
-    if not (
-        is_leader
-        or is_admin
-        or is_owner
-    ):
-
-        await interaction.response.send_message(
-            "❌ Ezt csak a **Leader**, admin vagy "
-            "szervertulajdonos használhatja!",
-            ephemeral=True
-        )
-
-        return
-
-    warn_chan = discord.utils.get(
-        interaction.guild.text_channels,
-        name="⚠️-figyelmeztetések"
-    )
-
-    if warn_chan:
-
-        embed = discord.Embed(
-            title="⚠️ Frakció Figyelmeztetés (Warn)",
-            description=(
-                f"**Kapta:** {tag.mention}\n"
-                f"**Adta:** {interaction.user.mention}\n"
-                f"**Indok:** {indok}"
-            ),
-            color=discord.Color.dark_red()
-        )
-
-        embed.timestamp = datetime.datetime.now()
-
-        await warn_chan.send(
-            embed=embed
-        )
-
-        try:
-
-            await tag.send(
-                "⚠️ **Figyelmeztetést kaptál "
-                "a frakcióban!**\n"
-                f"**Indok:** {indok}\n"
-                f"**Adta:** {interaction.user.name}"
-            )
-
-        except Exception:
-            pass
-
-        await interaction.response.send_message(
-            f"✅ Figyelmeztetés rögzítve: "
-            f"{tag.mention}",
-            ephemeral=True
-        )
-
-
-# =========================================================
-# 📢 /everyone
-# =========================================================
-
-@bot.tree.command(
-    name="everyone",
-    description=(
-        "Üzenet kiküldése az összes aktív "
-        "egyéni váróterembe"
-    )
-)
-@app_commands.describe(
-    uzenet="A kiküldendő üzenet szövege"
-)
-async def everyone_cmd(
-    interaction: discord.Interaction,
-    uzenet: str
-):
-
-    leader_role = discord.utils.get(
-        interaction.guild.roles,
-        name="Leader"
-    )
-
-    is_leader = (
-        leader_role is not None
-        and leader_role in interaction.user.roles
-    )
-
-    is_admin = (
-        interaction.user.guild_permissions.administrator
-    )
-
-    is_owner = (
-        interaction.user.id
-        == interaction.guild.owner_id
-    )
-
-    if not (
-        is_leader
-        or is_admin
-        or is_owner
-    ):
-
-        await interaction.response.send_message(
-            "❌ Ezt csak a **Leader**, admin vagy "
-            "szervertulajdonos használhatja!",
-            ephemeral=True
-        )
-
-        return
-
-    cat_varo = discord.utils.get(
-        interaction.guild.categories,
-        name="🚪 VÁRÓTERMEK"
-    )
-
-    if not cat_varo or not cat_varo.text_channels:
-
-        await interaction.response.send_message(
-            "⚠️ Jelenleg nincsenek nyitott "
-            "egyéni várótermek!",
-            ephemeral=True
-        )
-
-        return
-
-    sent_count = 0
-
-    for channel in cat_varo.text_channels:
-
-        try:
-
-            await channel.send(
-                f"📢 **Leaderi közlemény "
-                f"({interaction.user.mention}):**\n"
-                f"{uzenet}"
-            )
-
-            sent_count += 1
-
-        except Exception:
-            pass
-
-    await interaction.response.send_message(
-        f"✅ Az üzenet sikeresen kiküldve "
-        f"**{sent_count}** váróterembe!",
-        ephemeral=True
-    )
+        await ctx.send(msg)
 
 
 # =========================================================
 # 🚓 /frakcio_rendor
 # =========================================================
 
-@bot.tree.command(name="frakcio_rendor", description="Rendőrségi frakció teljes Discord szerkezete")
-async def frakcio_rendor(interaction: discord.Interaction):
-    guild = interaction.guild
-    if guild is None:
-        await interaction.response.send_message("❌ Ez a parancs csak Discord szerveren használható!", ephemeral=True)
-        return
-    if not (interaction.user.guild_permissions.administrator or interaction.user.id == guild.owner_id):
-        await interaction.response.send_message("❌ Ezt csak admin vagy a szerver tulajdonosa használhatja!", ephemeral=True)
-        return
-    await interaction.response.defer(ephemeral=True)
-    role = discord.utils.get(guild.roles, name="🚓 Rendőr") or await guild.create_role(name="🚓 Rendőr", color=discord.Color.blue())
-    leader = discord.utils.get(guild.roles, name="🚓 Rendőrség Vezetőség") or await guild.create_role(name="🚓 Rendőrség Vezetőség", color=discord.Color.dark_blue())
-    overwrites = {guild.default_role: discord.PermissionOverwrite(view_channel=False), role: discord.PermissionOverwrite(view_channel=True), leader: discord.PermissionOverwrite(view_channel=True)}
-    category = discord.utils.get(guild.categories, name="🚓 RENDŐRSÉG") or await guild.create_category("🚓 RENDŐRSÉG", overwrites=overwrites)
+@bot.hybrid_command(name="frakcio_rendor", description="Rendőrségi (LSPD/PD) frakció teljes kiépítése")
+async def frakcio_rendor(ctx: commands.Context):
     channels = [
-        ("📻-rádió", "Rendőrségi rádió / IC kommunikáció."), ("📜-rádió-szabályzat", "Rádióhasználati és kommunikációs szabályzat."),
-        ("📘-rendőrségi-szabályzat", "A rendőrség általános szabályzata."), ("🚔-járőr-információk", "Járőrözéshez és szolgálathoz szükséges információk."),
-        ("🚨-akciók", "Akciók, üldözések és taktikai műveletek."), ("🚗-járműpark", "Rendőrségi járművek, egységek és használatuk."),
-        ("🔫-felszerelés", "Felszerelések, fegyverek és szolgálati eszközök."), ("📋-feladatok", "Aktuális rendőrségi feladatok."),
-        ("⚖️-bírságok-eljárások", "Bírságok és RP eljárások."), ("📂-nyomozások", "Nyomozások és ügyek."),
-        ("📝-jelentések", "Szolgálati és intézkedési jelentések."), ("📢-közlemények", "Vezetőségi közlemények."), ("💬-rendőr-ooc", "Rendőrségi OOC beszélgetés.")
+        ("📻-rendőr-rádió", "Rendőrségi rádió / IC kommunikáció"),
+        ("📜-rádió-szabályzat", "Rádióhasználati szabályzat és kódok"),
+        ("📘-rendőrségi-szabályzat", "Általános rendőrségi szabályzat"),
+        ("🚔-járőr-információk", "Járőrözési protokollok és zónák"),
+        ("🚨-akciók-és-tervek", "Taktikai műveletek és elfogások"),
+        ("🚗-járműpark", "Rendőrségi járművek és kulcsok"),
+        ("🔫-felszerelés-és-fegyvertár", "Fegyverek, golyóálló mellények, felszerelés"),
+        ("📋-napi-feladatok", "Aktuális elfogatóparancsok és feladatok"),
+        ("⚖️-bírságok-és-btk", "Büntető törvénykönyv és bírságok"),
+        ("📂-nyomozások-és-akták", "Detektív nyomozati ügyek"),
+        ("📝-intézkedési-jelentések", "Hivatalos rendőri jelentések"),
+        ("📢-vezetőségi-közlemények", "Vezetőségi hírek és utasítások"),
+        ("💬-rendőr-ooc", "OOC kötetlen beszélgető")
     ]
-    created=0
-    for name,topic in channels:
-        if discord.utils.get(category.text_channels,name=name) is None:
-            await category.create_text_channel(name=name, topic=topic); created+=1
-    await interaction.followup.send(f"✅ **Rendőrségi frakció elkészült!**\n🚓 Kategória: {category.mention}\n🎖️ Rang: **{role.name}**\n📁 Új csatornák: **{created}**", ephemeral=True)
+    await build_faction_structure(ctx, "🚓 RENDŐRSÉG", "🚓 Rendőr", "🚓 Rendőrség Vezetőség", discord.Color.blue(), channels)
+
 
 # =========================================================
 # 🚑 /frakcio_mentos
 # =========================================================
 
-@bot.tree.command(name="frakcio_mentos", description="Mentőszolgálati frakció teljes Discord szerkezete")
-async def frakcio_mentos(interaction: discord.Interaction):
-    guild=interaction.guild
-    if guild is None:
-        await interaction.response.send_message("❌ Ez a parancs csak Discord szerveren használható!", ephemeral=True); return
-    if not (interaction.user.guild_permissions.administrator or interaction.user.id==guild.owner_id):
-        await interaction.response.send_message("❌ Ezt csak admin vagy a szerver tulajdonosa használhatja!", ephemeral=True); return
-    await interaction.response.defer(ephemeral=True)
-    role=discord.utils.get(guild.roles,name="🚑 Mentős") or await guild.create_role(name="🚑 Mentős",color=discord.Color.red())
-    leader=discord.utils.get(guild.roles,name="🚑 Mentőszolgálat Vezetőség") or await guild.create_role(name="🚑 Mentőszolgálat Vezetőség",color=discord.Color.dark_red())
-    overwrites={guild.default_role:discord.PermissionOverwrite(view_channel=False),role:discord.PermissionOverwrite(view_channel=True),leader:discord.PermissionOverwrite(view_channel=True)}
-    category=discord.utils.get(guild.categories,name="🚑 MENTŐSZOLGÁLAT") or await guild.create_category("🚑 MENTŐSZOLGÁLAT",overwrites=overwrites)
-    channels=[
-        ("📻-mentős-rádió","Mentőszolgálati rádió / IC kommunikáció."),("📜-rádió-szabályzat","Mentős rádiózási és kommunikációs szabályzat."),
-        ("📘-mentős-szabályzat","A mentőszolgálat általános szabályzata."),("🚑-szolgálati-információk","Szolgálathoz szükséges információk."),
-        ("🏥-kórházi-információk","Kórházi és betegellátási információk."),("🚨-riasztások","Aktuális riasztások és kivonulások."),
-        ("🩺-felszerelés","Orvosi felszerelések és használatuk."),("🚑-járműpark","Mentőautók és egyéb szolgálati járművek."),
-        ("📋-betegjelentések","RP beteg- és esetjelentések."),("📝-szolgálati-jelentések","Szolgálati jelentések."),
-        ("📢-közlemények","Vezetőségi közlemények."),("💬-mentős-ooc","Mentőszolgálati OOC beszélgetés.")
+@bot.hybrid_command(name="frakcio_mentos", description="Mentőszolgálati (EMS) frakció teljes kiépítése")
+async def frakcio_mentos(ctx: commands.Context):
+    channels = [
+        ("📻-mentős-rádió", "Mentőszolgálati rádió és hívások"),
+        ("📜-rádió-szabályzat", "Rádiózási protokoll"),
+        ("📘-mentős-szabályzat", "Általános egészségügyi szabályzat"),
+        ("🚑-szolgálati-információk", "Szolgálati beosztások"),
+        ("🏥-kórházi-információk", "Kórházi ellátások és árak"),
+        ("🚨-riasztások", "Sürgősségi riasztások"),
+        ("🩺-orvosi-felszerelés", "Gyógyszerek és orvosi táska"),
+        ("🚑-járműpark-és-helikopter", "Mentőautók és helikopterek"),
+        ("📋-betegellátási-jegyzék", "Ellátott betegek naplója"),
+        ("📝-szolgálati-jelentések", "Hivatalos mentős jelentések"),
+        ("📢-vezetőségi-közlemények", "EMS Vezetőségi közlemények"),
+        ("💬-mentős-ooc", "OOC beszélgető")
     ]
-    created=0
-    for name,topic in channels:
-        if discord.utils.get(category.text_channels,name=name) is None:
-            await category.create_text_channel(name=name,topic=topic); created+=1
-    await interaction.followup.send(f"✅ **Mentőszolgálati frakció elkészült!**\n🚑 Kategória: {category.mention}\n🎖️ Rang: **{role.name}**\n📁 Új csatornák: **{created}**",ephemeral=True)
+    await build_faction_structure(ctx, "🚑 MENTŐSZOLGÁLAT", "🚑 Mentős", "🚑 Mentőszolgálat Vezetőség", discord.Color.red(), channels)
+
 
 # =========================================================
 # 🔧 /frakcio_szerelo
 # =========================================================
 
-@bot.tree.command(name="frakcio_szerelo", description="Szerelő frakció teljes Discord szerkezete")
-async def frakcio_szerelo(interaction: discord.Interaction):
-    guild=interaction.guild
-    if guild is None:
-        await interaction.response.send_message("❌ Ez a parancs csak Discord szerveren használható!",ephemeral=True); return
-    if not (interaction.user.guild_permissions.administrator or interaction.user.id==guild.owner_id):
-        await interaction.response.send_message("❌ Ezt csak admin vagy a szerver tulajdonosa használhatja!",ephemeral=True); return
-    await interaction.response.defer(ephemeral=True)
-    role=discord.utils.get(guild.roles,name="🔧 Szerelő") or await guild.create_role(name="🔧 Szerelő",color=discord.Color.orange())
-    leader=discord.utils.get(guild.roles,name="🔧 Szerelő Vezetőség") or await guild.create_role(name="🔧 Szerelő Vezetőség",color=discord.Color.dark_orange())
-    overwrites={guild.default_role:discord.PermissionOverwrite(view_channel=False),role:discord.PermissionOverwrite(view_channel=True),leader:discord.PermissionOverwrite(view_channel=True)}
-    category=discord.utils.get(guild.categories,name="🔧 SZERELŐ") or await guild.create_category("🔧 SZERELŐ",overwrites=overwrites)
-    channels=[
-        ("📻-szerelő-rádió","Szerelő rádió / IC kommunikáció."),("📜-szerelő-szabályzat","Szerelői és rádiózási szabályzat."),
-        ("📘-műhely-szabályzat","A műhely használatának szabályai."),("💰-szerelő-árlista","Szerelői szolgáltatások és árlista."),
-        ("🔧-munkalapok","Aktuális szerelési munkalapok."),("🚗-járművek","Javítandó és elkészült járművek."),
-        ("🛠️-alkatrészek","Alkatrészek és készletinformációk."),("📦-raktár","Raktár és készlet."),
-        ("📋-munkajelentések","Elvégzett munkák jelentései."),("💵-kassza-elszámolás","Munkadíjak és kassza elszámolások."),
-        ("📢-közlemények","Vezetőségi közlemények."),("💬-szerelő-ooc","Szerelői OOC beszélgetés.")
+@bot.hybrid_command(name="frakcio_szerelo", description="Szerelő frakció (Műhely/Fix&Drive) teljes kiépítése")
+async def frakcio_szerelo(ctx: commands.Context):
+    channels = [
+        ("📻-szerelő-rádió", "Szerelő rádió és autómentés"),
+        ("📜-szerelő-szabályzat", "Műhely működési szabályzata"),
+        ("💰-szerelő-árlista", "Szerelési és vontatási árlista"),
+        ("🔧-munkalapok", "Folyamatban lévő szerelések"),
+        ("🚗-vontatók-és-járművek", "Szerelő járművek és kulcsok"),
+        ("🛠️-alkatrészek-és-tuning", "Alkatrész raktár és árak"),
+        ("📦-műhely-raktár", "Raktárkészlet nyilvántartás"),
+        ("📋-munkajelentések", "Napi szerelési jelentések"),
+        ("💵-kassza-és-elszámolás", "Pénzügyi elszámolások"),
+        ("📢-vezetőségi-közlemények", "Szerelő vezetőségi hírek"),
+        ("💬-szerelő-ooc", "OOC chat")
     ]
-    created=0
-    for name,topic in channels:
-        if discord.utils.get(category.text_channels,name=name) is None:
-            await category.create_text_channel(name=name,topic=topic); created+=1
-    await interaction.followup.send(f"✅ **Szerelő frakció elkészült!**\n🔧 Kategória: {category.mention}\n🎖️ Rang: **{role.name}**\n📁 Új csatornák: **{created}**",ephemeral=True)
+    await build_faction_structure(ctx, "🔧 SZERELŐ MŰHELY", "🔧 Szerelő", "🔧 Szerelő Vezetőség", discord.Color.orange(), channels)
+
+
+# =========================================================
+# 🕶️ /frakcio_mafia
+# =========================================================
+
+@bot.hybrid_command(name="frakcio_mafia", description="Maffia / Szervezett bűnözési frakció kiépítése")
+async def frakcio_mafia(ctx: commands.Context):
+    channels = [
+        ("📻-titkos-rádió", "Kódolt rádiócsatorna"),
+        ("📜-család-szabályzata", "Omertà és a család szabályai"),
+        ("⚔️-akciók-és-rablásertek", "Bankrablássok, túszdrámák és tervek"),
+        ("🤝-diplomácia-és-szövetségek", "Más maffiákkal és bandákkal való megállapodások"),
+        ("📦-fegyver-és-drograktár", "Illegális raktárkészlet"),
+        ("🚗-családi-flotta", "Maffia járművek és kulcsok"),
+        ("💰-feketepiac-és-pénzmosás", "Pénzügyek és bevételek"),
+        ("📋-megbízások-és-vérdíjak", "Célpontok és megbízások"),
+        ("📢-don-utasításai", "Vezetőség és a Don közleményei"),
+        ("💬-mafia-ooc", "OOC beszélgető")
+    ]
+    await build_faction_structure(ctx, "🕶️ MAFFIA", "🕶️ Maffia Tag", "🕶️ Maffia Vezetőség", discord.Color.dark_purple(), channels)
+
+
+# =========================================================
+# 🏙️ /frakcio_banda
+# =========================================================
+
+@bot.hybrid_command(name="frakcio_banda", description="Utcai Banda (Gang) frakció kiépítése")
+async def frakcio_banda(ctx: commands.Context):
+    channels = [
+        ("📻-utcai-rádió", "Utcai rádiózás és jelzések"),
+        ("📜-hood-szabályok", "Terület és hood szabályzat"),
+        ("🔫-területharcok-és-akciók", "Turf war-ok és lövöldözések"),
+        ("🚗-banda-autók", "Verdák és lowrider-ek"),
+        ("📦-banda-széf", "Közös széf és drogok"),
+        ("💰-biznisz-és-eladások", "Utcai üzletek"),
+        ("📢-og-üzenetek", "OG-k és vezetők hirdetményei"),
+        ("💬-gang-ooc", "OOC beszélgető")
+    ]
+    await build_faction_structure(ctx, "🏙️ UTCAI BANDA", "🏙️ Banda Tag", "🏙️ Banda OG", discord.Color.dark_gold(), channels)
+
+
+# =========================================================
+# 🏛️ /frakcio_kormany
+# =========================================================
+
+@bot.hybrid_command(name="frakcio_kormany", description="Kormány / Városháza frakció kiépítése")
+async def frakcio_kormany(ctx: commands.Context):
+    channels = [
+        ("📻-kormány-rádió", "Hivatalos rádiócsatorna"),
+        ("📜-alkotmány-és-törvények", "Városi törvények és rendeletek"),
+        ("⚖️-bírósági-ügyek", "Tárgyalások és perek"),
+        ("🏢-engedélyek-és-egyéni-vállalkozások", "Cégbejegyzések és engedélyek"),
+        ("💰-városi-költségvetés", "Kincstár és adók"),
+        ("📢-polgármesteri-közlemények", "Hivatalos városi bejelentések"),
+        ("💬-kormány-ooc", "OOC chat")
+    ]
+    await build_faction_structure(ctx, "🏛️ KORMÁNY ÉS BÍRÓSÁG", "🏛️ Kormánytisztviselő", "🏛️ Kormány Vezetőség", discord.Color.gold(), channels)
+
+
+# =========================================================
+# ⚡ /setup_frakcio (Általános Frakció Struktúra + Duty Mérő)
+# =========================================================
+
+@bot.hybrid_command(name="setup_frakcio", description="Teljes alapértelmezett frakció szerkezet kiépítése")
+async def setup_frakcio(ctx: commands.Context):
+    if not check_permission(ctx):
+        await ctx.send("❌ Ezt a parancsot csak Leader, admin vagy tulajdonos használhatja!", ephemeral=True)
+        return
+
+    if ctx.interaction:
+        await ctx.interaction.response.defer()
+
+    guild = ctx.guild
+
+    leader = discord.utils.get(guild.roles, name="Leader") or await guild.create_role(name="Leader", color=discord.Color.red(), permissions=discord.Permissions(administrator=True))
+    subleader = discord.utils.get(guild.roles, name="Subleader") or await guild.create_role(name="Subleader", color=discord.Color.orange())
+    tag = discord.utils.get(guild.roles, name="Frakciótag") or await guild.create_role(name="Frakciótag", color=discord.Color.blue())
+
+    overwrites_hidden = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        tag: discord.PermissionOverwrite(view_channel=True),
+        leader: discord.PermissionOverwrite(view_channel=True),
+        subleader: discord.PermissionOverwrite(view_channel=True)
+    }
+
+    overwrites_admin = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        leader: discord.PermissionOverwrite(view_channel=True),
+        subleader: discord.PermissionOverwrite(view_channel=True)
+    }
+
+    # 🚪 VÁRÓTERMEK
+    await guild.create_category("🚪 VÁRÓTERMEK", overwrites=overwrites_admin)
+
+    # 📌 INFORMÁCIÓK
+    cat_info = await guild.create_category("📌 INFORMÁCIÓK", overwrites=overwrites_hidden)
+    for ch in ["👋-belépő", "📢-bejelentések", "📜-szabályzat", "🎖️-rangok-és-fizetések", "📝-minták-és-nyomtatványok", "🚗-járműpark-és-kulcsok", "❓-gyakori-kérdések"]:
+        await cat_info.create_text_channel(ch)
+
+    # 💼 IC ÉLET
+    cat_ic_elet = await guild.create_category("💼 IC ÉLET", overwrites=overwrites_hidden)
+    for ch in ["💬-ic-chat", "📸-ic-fotók-és-kamera", "📝-szabadságkérelmek", "📋-ic-ötletek-és-reformok", "📂-ic-adatok"]:
+        await cat_ic_elet.create_text_channel(ch)
+
+    # 💭 OOC ÉLET
+    cat_ooc = await guild.create_category("💭 OOC ÉLET", overwrites=overwrites_hidden)
+    for ch in ["💭-ooc-chat", "📷-rp-élményképek", "💡-ötletek-és-javaslatok", "😂-mémek-és-offtopic"]:
+        await cat_ooc.create_text_channel(ch)
+
+    # 💼 IC MŰKÖDÉS & DUTY
+    cat_ic = await guild.create_category("💼 IC MŰKÖDÉS & DUTY", overwrites=overwrites_hidden)
+    duty_chan = await cat_ic.create_text_channel("⏰-duty-mérő")
+    for ch in ["📋-szolgálati-napló", "📦-frakció-széf-és-raktár", "⚔️-akciók-és-tervek", "🤝-diplomácia", "💰-kassza-és-elszámolás"]:
+        await cat_ic.create_text_channel(ch)
+
+    embed_duty = discord.Embed(
+        title="⏰ Szolgálati Idő Mérő (Duty)",
+        description="🟢 **Duty Be** - Szolgálat megkezdése\n🔴 **Duty Ki** - Szolgálat befejezése\n📊 **Összidő** - Összesített idő lekérése",
+        color=discord.Color.blue()
+    )
+    await duty_chan.send(embed=embed_duty, view=DutyView())
+
+    # 🔒 VEZETŐSÉG
+    cat_vez = await guild.create_category("🔒 VEZETŐSÉG", overwrites=overwrites_admin)
+    for ch in ["🔒-vezetőségi-chat", "📋-jelentkezések", "⚠️-figyelmeztetések", "🚫-feketelista", "📑-vezetőségi-jegyzetek"]:
+        await cat_vez.create_text_channel(ch)
+
+    # 🔊 HANGCSATORNÁK
+    cat_voice = await guild.create_category("🔊 HANGCSATORNÁK", overwrites=overwrites_hidden)
+    for vch in ["🔊 OOC Beszélgető 1", "🔊 OOC Beszélgető 2", "🔊 Rádió 1 [IC / RP]", "🔊 Rádió 2 [IC / RP]", "🔊 Akció / Taktikai 1", "💤 AFK / Inaktív"]:
+        await cat_voice.create_voice_channel(vch)
+    await cat_voice.create_voice_channel("🔒 Vezetőségi Tárgyaló", overwrites=overwrites_admin)
+
+    msg = "✅ **A frakció szerkezete és a duty mérő panel sikeresen elkészült!**"
+    if ctx.interaction:
+        await ctx.interaction.followup.send(msg)
+    else:
+        await ctx.send(msg)
+
+
+# =========================================================
+# 📢 /bejelentes
+# =========================================================
+
+@bot.hybrid_command(name="bejelentes", description="Hivatalos bejelentés kiküldése")
+@app_commands.describe(cim="A bejelentés címe", uzenet="A bejelentés szövege")
+async def bejelentes(ctx: commands.Context, cim: str, *, uzenet: str):
+    if not check_permission(ctx):
+        await ctx.send("❌ Ezt csak Leader, admin vagy tulajdonos használhatja!", ephemeral=True)
+        return
+
+    chan = discord.utils.get(ctx.guild.text_channels, name="📢-bejelentések")
+    if chan:
+        embed = discord.Embed(title=f"📢 {cim}", description=uzenet, color=discord.Color.red())
+        embed.set_footer(text=f"Kiadta: {ctx.author.display_name}")
+        embed.timestamp = datetime.datetime.now()
+        await chan.send(content="@everyone", embed=embed)
+        await ctx.send("✅ Bejelentés sikeresen kiküldve!", ephemeral=True)
+    else:
+        await ctx.send("❌ Nem található a `📢-bejelentések` csatorna!", ephemeral=True)
+
+
+# =========================================================
+# ⚠️ /warn
+# =========================================================
+
+@bot.hybrid_command(name="warn", description="Figyelmeztetés adása egy tagnak")
+@app_commands.describe(tag="A figyelmeztetett tag", indok="A figyelmeztetés indoka")
+async def warn(ctx: commands.Context, tag: discord.Member, *, indok: str):
+    if not check_permission(ctx):
+        await ctx.send("❌ Ezt csak Leader, admin vagy tulajdonos használhatja!", ephemeral=True)
+        return
+
+    warn_chan = discord.utils.get(ctx.guild.text_channels, name="⚠️-figyelmeztetések")
+    if warn_chan:
+        embed = discord.Embed(
+            title="⚠️ Frakció Figyelmeztetés (Warn)",
+            description=f"**Kapta:** {tag.mention}\n**Adta:** {ctx.author.mention}\n**Indok:** {indok}",
+            color=discord.Color.dark_red()
+        )
+        embed.timestamp = datetime.datetime.now()
+        await warn_chan.send(embed=embed)
+
+        try:
+            await tag.send(f"⚠️ **Figyelmeztetést kaptál a frakcióban!**\n**Indok:** {indok}\n**Adta:** {ctx.author.name}")
+        except Exception:
+            pass
+
+        await ctx.send(f"✅ Figyelmeztetés rögzítve: {tag.mention}", ephemeral=True)
+
+
+# =========================================================
+# 🎁 /ajandek
+# =========================================================
+
+@bot.hybrid_command(name="ajandek", description="Nyereményjáték indítása")
+@app_commands.describe(nyeremeny="Mi a nyeremény?")
+async def ajandek(ctx: commands.Context, *, nyeremeny: str):
+    if not check_permission(ctx):
+        await ctx.send("❌ Ezt a parancsot csak Leader, admin vagy tulajdonos használhatja!", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="🎁 NYEREMÉNYJÁTÉK! 🎁",
+        description=f"**Nyeremény:** {nyeremeny}\n\nKattints a **🎉 Jelentkezés** gombra a részvételhez!",
+        color=discord.Color.purple()
+    )
+    embed.set_footer(text=f"Indította: {ctx.author.display_name}")
+    embed.timestamp = datetime.datetime.now()
+
+    view = GiveawayView(prize=nyeremeny, host=ctx.author)
+    await ctx.send(embed=embed, view=view)
+
+
+# =========================================================
+# 🧹 /clear
+# =========================================================
+
+@bot.hybrid_command(name="clear", description="Üzenetek törlése a csatornából")
+@app_commands.describe(mennyiseg="Hány üzenetet töröljön a bot?")
+async def clear_messages(ctx: commands.Context, mennyiseg: int = 100):
+    if not check_permission(ctx):
+        await ctx.send("❌ Nincs jogosultságod az üzenetek törléséhez!", ephemeral=True)
+        return
+
+    if ctx.interaction:
+        await ctx.interaction.response.defer(ephemeral=True)
+
+    try:
+        deleted = await ctx.channel.purge(limit=mennyiseg)
+        msg = f"🧹 Sikeresen törölve **{len(deleted)}** üzenet!"
+        if ctx.interaction:
+            await ctx.interaction.followup.send(msg, ephemeral=True)
+        else:
+            await ctx.send(msg, delete_after=5)
+    except Exception as e:
+        msg = f"⚠️ Hiba történt: {e}"
+        if ctx.interaction:
+            await ctx.interaction.followup.send(msg, ephemeral=True)
+        else:
+            await ctx.send(msg)
+
+
+# =========================================================
+# 💣 /remove
+# =========================================================
+
+@bot.hybrid_command(name="remove", description="MINDEN csatorna törlése a szerverről")
+async def remove_all(ctx: commands.Context):
+    if ctx.author.id != ctx.guild.owner_id:
+        await ctx.send("❌ Ezt kizárólag a **szerver tulajdonosa** használhatja!", ephemeral=True)
+        return
+
+    await ctx.send("💣 **A szerver összes csatornájának törlése megkezdődött...**", ephemeral=True)
+    for channel in list(ctx.guild.channels):
+        try:
+            await channel.delete()
+        except Exception:
+            pass
+
+
+# =========================================================
+# 📢 /everyone
+# =========================================================
+
+@bot.hybrid_command(name="everyone", description="Üzenet kiküldése az összes nyitott váróterembe")
+@app_commands.describe(uzenet="A kiküldendő üzenet")
+async def everyone_cmd(ctx: commands.Context, *, uzenet: str):
+    if not check_permission(ctx):
+        await ctx.send("❌ Ezt csak Leader, admin vagy tulajdonos használhatja!", ephemeral=True)
+        return
+
+    cat_varo = discord.utils.get(ctx.guild.categories, name="🚪 VÁRÓTERMEK")
+    if not cat_varo or not cat_varo.text_channels:
+        await ctx.send("⚠️ Jelenleg nincsenek nyitott egyéni várótermek!", ephemeral=True)
+        return
+
+    sent_count = 0
+    for channel in cat_varo.text_channels:
+        try:
+            await channel.send(f"📢 **Leaderi közlemény ({ctx.author.mention}):**\n{uzenet}")
+            sent_count += 1
+        except Exception:
+            pass
+
+    await ctx.send(f"✅ Az üzenet kiküldve **{sent_count}** váróterembe!", ephemeral=True)
 
 
 # =========================================================
 # 🚀 BOT INDÍTÁSA
 # =========================================================
 
-bot.run(
-    os.environ["DISCORD_TOKEN"]
-)
+token = os.environ.get("DISCORD_TOKEN")
+
+if not token:
+    print("❌ HIBA: A 'DISCORD_TOKEN' környezeti változó nincs beállítva a Renderen!")
+    sys.exit(0)
+
+try:
+    bot.run(token)
+except discord.errors.PrivilegedIntentsRequired:
+    print("❌ HIBA: A Discord Portalon be kell kapcsolnod az INTENT-eket (Server Members & Message Content)!")
+except Exception as e:
+    print(f"[BOT CRASH PREVENTED] {e}")
