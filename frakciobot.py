@@ -75,17 +75,14 @@ duty_total_seconds = {}
 # =========================================================
 
 class FactionBot(commands.Bot):
-
-    def __init__(self):
-
-        super().__init__(
-            command_prefix="!",
-            intents=intents
+    def __init__(self):    
+        super().__init__(        
+            command_prefix="!",           
+            intents=intents         
         )
 
-  async def setup_hook(self):
-    print("⚙️ Bot setup_hook lefutott.")
-
+    async def setup_hook(self):   
+        print("⚙️ Bot setup_hook lefutott.")       
 
 bot = FactionBot()
 
