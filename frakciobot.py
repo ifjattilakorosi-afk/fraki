@@ -1040,49 +1040,105 @@ async def on_member_join(
         )
 
 
-# =========================================================
-# 🔄 SLASH PARANCSOK SZINKRONIZÁLÁSA
-# =========================================================
+_views_loaded = False
+_commands_synced = False
 
-async def sync_guild_commands():
 
+@bot.event
+async def on_ready():
+
+    global _views_loaded
     global _commands_synced
 
-    if _commands_synced:
-        return
+    # =====================================================
+    # 🔄 SLASH PARANCSOK SZINKRONIZÁLÁSA
+    # =====================================================
 
-    if not bot.guilds:
+    if not _commands_synced:
 
-        print(
-            "⚠️ Még nincs betöltött Discord szerver."
-        )
+        all_synced = True
 
-        return
+        for guild in bot.guilds:
 
-    success = True
+            try:
+
+                # A globális command tree jelenlegi
+                # parancsait átmásoljuk az adott guildre.
+                bot.tree.copy_global_to(guild=guild)
+
+                synced = await bot.tree.sync(
+                    guild=guild
+                )
+
+                print(
+                    f"✅ {guild.name} | "
+                    f"{len(synced)} slash parancs szinkronizálva."
+                )
+
+            except Exception as e:
+
+                all_synced = False
+
+                print(
+                    f"❌ Slash parancs sync hiba | "
+                    f"{guild.name}: {e}"
+                )
+
+        _commands_synced = all_synced
+
+    # =====================================================
+    # 🔘 RÉGI GOMBOK BETÖLTÉSE
+    # =====================================================
+
+    if not _views_loaded:
+
+        bot.add_view(DutyView())
+
+        for guild in bot.guilds:
+
+            waiting_category = discord.utils.get(
+                guild.categories,
+                name="🚪 VÁRÓTERMEK"
+            )
+
+            if waiting_category is None:
+                continue
+
+            for channel in waiting_category.text_channels:
+
+                if not channel.topic:
+                    continue
+
+                prefix = "FRAKCIOS_JELENTKEZES:"
+
+                if not channel.topic.startswith(prefix):
+                    continue
+
+                try:
+                    member_id = int(
+                        channel.topic[len(prefix):]
+                    )
+                except ValueError:
+                    continue
+
+                try:
+
+                    bot.add_view(
+                        AcceptView(
+                            member_id,
+                            channel.id
+                        )
+                    )
+
+                except ValueError:
+                    pass
+
+        _views_loaded = True
 
     print(
-        f"🔄 Slash parancsok szinkronizálása "
-        f"{len(bot.guilds)} szerverre..."
+        f"✅ Bejelentkezve: {bot.user} | "
+        f"Szerverek: {len(bot.guilds)}"
     )
-
-    for guild in bot.guilds:
-
-        try:
-
-            # A globális command tree jelenlegi
-# parancsait átmásoljuk az adott guildre.
-
-bot.tree.copy_global_to(guild=guild)
-
-synced = await bot.tree.sync(
-    guild=guild
-)
-
-print(
-    f"✅ {guild.name} | "
-    f"{len(synced)} slash parancs szinkronizálva."
-)
 
             command_names = [
                 command.name
