@@ -2774,24 +2774,31 @@ async def on_ready():
 # =========================================================
 # 🚀 BOT INDÍTÁSA
 # =========================================================
+if __name__ == "__main__":
+    print("========================================")
+    print("🚀 FRAKCIÓ BOT INDÍTÁSA")
+    print("========================================")
 
-token = os.environ.get(
-    "DISCORD_TOKEN"
-)
+    try:
+        token = os.environ.get("DISCORD_TOKEN")
 
-if not token:
+        if not token:
+            print("❌ HIBA: A DISCORD_TOKEN nincs beállítva!")
+            raise RuntimeError("DISCORD_TOKEN környezeti változó hiányzik.")
 
-    print(
-        "❌ HIBA: A DISCORD_TOKEN "
-        "környezeti változó nincs beállítva!"
-    )
+        print("✅ DISCORD_TOKEN megtalálva.")
+        print("🔌 Kapcsolódás a Discordhoz...")
 
-else:
+        bot.run(token)
 
-    print(
-        "🚀 Discord bot indítása..."
-    )
+    except Exception as e:
+        print("========================================")
+        print("❌ A BOT INDÍTÁSA SIKERTELEN!")
+        print(f"❌ Hiba típusa: {type(e).__name__}")
+        print(f"❌ Hiba: {e}")
+        print("========================================")
 
-    bot.run(
-        token
-    )
+        import traceback
+        traceback.print_exc()
+
+        raise
