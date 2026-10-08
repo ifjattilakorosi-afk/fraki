@@ -2534,37 +2534,16 @@ async def sync_guild_commands():
     global _commands_synced
 
     if _commands_synced:
-
         return
 
     if not bot.guilds:
-
-        print(
-            "⚠️ A bot jelenleg egyetlen szerveren sincs."
-        )
-
+        print("⚠️ A bot jelenleg egyetlen szerveren sincs.")
         return
 
-    success = True
+    print("🔄 Slash parancsok szinkronizálása...")
 
-    print(
-        "🔄 Slash parancsok szinkronizálása..."
-    )
-
-    print(
-        f"📦 Regisztrált parancsok száma: "
-        f"{len(bot.tree.get_commands())}"
-    )
-
-    for guild in bot.guilds:
-
-        try:
-
-            # A globális parancsokat bemásoljuk
-            # közvetlenül az adott szerverre.
-            bot.tree.copy_global_to(
-                guild=guild
-            )
+    try:
+        for guild in bot.guilds:
 
             synced = await bot.tree.sync(
                 guild=guild
@@ -2577,8 +2556,7 @@ async def sync_guild_commands():
 
             print(
                 f"✅ {guild.name} | "
-                f"{len(synced)} slash parancs "
-                f"szinkronizálva."
+                f"{len(synced)} slash parancs szinkronizálva."
             )
 
             print(
@@ -2586,33 +2564,16 @@ async def sync_guild_commands():
                 f"{', '.join(command_names)}"
             )
 
-        except Exception as e:
-
-            success = False
-
-            print(
-                f"❌ Slash sync hiba: "
-                f"{guild.name} | "
-                f"{type(e).__name__}: {e}"
-            )
-
-    if success:
-
         _commands_synced = True
 
-        print(
-            "✅ AZ ÖSSZES SLASH PARANCS "
-            "SZINKRONIZÁLVA!"
-        )
+        print("✅ AZ ÖSSZES SLASH PARANCS SZINKRONIZÁLVA!")
 
-    else:
+    except Exception as e:
 
         print(
-            "⚠️ Néhány slash parancs "
-            "szinkronizálása nem sikerült."
+            f"❌ Slash sync hiba: "
+            f"{type(e).__name__}: {e}"
         )
-
-
 # =========================================================
 # 🔘 RÉGI GOMBOK VISSZATÖLTÉSE
 # =========================================================
