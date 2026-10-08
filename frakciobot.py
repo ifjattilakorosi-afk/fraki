@@ -1072,8 +1072,15 @@ async def sync_guild_commands():
 
             # A globális command tree jelenlegi
             # parancsait átmásoljuk az adott guildre.
-            bot.tree.copy_global_to(
-                guild=guild
+            
+            
+            
+            
+            
+            
+            
+            bot.tree.copy_global_to(guild=guild)
+            await bot.tree.sync(guild=guild)
             )
 
             synced = await bot.tree.sync(
