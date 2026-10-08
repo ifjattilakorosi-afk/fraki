@@ -83,11 +83,8 @@ class FactionBot(commands.Bot):
             intents=intents
         )
 
-    async def setup_hook(self):
-
-        # A slash parancsokat az on_ready()
-        # eseményben szinkronizáljuk szerverenként.
-        print("⚙️ Bot setup_hook lefutott.")
+  async def setup_hook(self):
+    print("⚙️ Bot setup_hook lefutott.")
 
 
 bot = FactionBot()
@@ -2729,26 +2726,16 @@ async def load_persistent_views():
 @bot.event
 async def on_ready():
 
-    print(
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print(f"🟢 BEJELENTKEZVE: {bot.user}")
+    print(f"🆔 Bot ID: {bot.user.id}")
+    print(f"🌐 Szerverek száma: {len(bot.guilds)}")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-    print(
-        f"🟢 BEJELENTKEZVE: {bot.user}"
-    )
+    await load_persistent_views()
 
-    print(
-        f"🆔 Bot ID: {bot.user.id}"
-    )
-
-    print(
-        f"🌐 Szerverek száma: "
-        f"{len(bot.guilds)}"
-    )
-
-    print(
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+    print("🚀 BOT TELJESEN ELINDULT!")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     # =====================================================
     # 🔄 SLASH COMMAND SYNC
