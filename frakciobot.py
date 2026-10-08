@@ -28,9 +28,16 @@ class HealthHandler(BaseHTTPRequestHandler):
 def start_web_server():
     try:
         port = int(os.environ.get("PORT", 10000))
-        server = HTTPServer(("0.0.0.0", port), HealthHandler)
 
-        print(f"🌐 Render health server elindult a(z) {port} porton.")
+        server = HTTPServer(
+            ("0.0.0.0", port),
+            HealthHandler
+        )
+
+        print(
+            f"🌐 Render health server elindult "
+            f"a(z) {port} porton."
+        )
 
         server.serve_forever()
 
@@ -49,6 +56,7 @@ threading.Thread(
 # =========================================================
 
 intents = discord.Intents.default()
+
 intents.guilds = True
 intents.message_content = True
 intents.members = True
@@ -77,9 +85,8 @@ class FactionBot(commands.Bot):
 
     async def setup_hook(self):
 
-        # A slash parancsok szinkronizálása az on_ready
-        # eseményben történik, mert ott már biztosan
-        # rendelkezésre állnak a guild-ek.
+        # A slash parancsokat az on_ready()
+        # eseményben szinkronizáljuk szerverenként.
         print("⚙️ Bot setup_hook lefutott.")
 
 
@@ -95,10 +102,12 @@ _views_loaded = False
 
 
 # =========================================================
-# 🔐 JOGOSULTSÁG ELLENŐRZÉS
+# 🔐 JOGOSULTSÁG
 # =========================================================
 
-def has_management_access(interaction: discord.Interaction):
+def has_management_access(
+    interaction: discord.Interaction
+):
 
     guild = interaction.guild
 
@@ -118,13 +127,17 @@ def has_management_access(interaction: discord.Interaction):
         name="Leader"
     )
 
-    if leader_role is not None and leader_role in user.roles:
-        return True
+    if leader_role is not None:
+
+        if leader_role in user.roles:
+            return True
 
     return False
 
 
-def has_admin_access(interaction: discord.Interaction):
+def has_admin_access(
+    interaction: discord.Interaction
+):
 
     guild = interaction.guild
 
@@ -151,7 +164,9 @@ class GiveawayView(discord.ui.View):
         host: discord.Member
     ):
 
-        super().__init__(timeout=None)
+        super().__init__(
+            timeout=None
+        )
 
         self.prize = prize
         self.host = host
@@ -176,10 +191,13 @@ class GiveawayView(discord.ui.View):
 
         if user_id in self.participants:
 
-            self.participants.remove(user_id)
+            self.participants.remove(
+                user_id
+            )
 
             button.label = (
-                f"🎉 Jelentkezés ({len(self.participants)})"
+                f"🎉 Jelentkezés "
+                f"({len(self.participants)})"
             )
 
             await interaction.response.edit_message(
@@ -193,10 +211,13 @@ class GiveawayView(discord.ui.View):
 
         else:
 
-            self.participants.add(user_id)
+            self.participants.add(
+                user_id
+            )
 
             button.label = (
-                f"🎉 Jelentkezés ({len(self.participants)})"
+                f"🎉 Jelentkezés "
+                f"({len(self.participants)})"
             )
 
             await interaction.response.edit_message(
@@ -204,8 +225,8 @@ class GiveawayView(discord.ui.View):
             )
 
             await interaction.followup.send(
-                "🎉 **Sikeresen jelentkeztél a nyereményjátékra!** "
-                "Sok szerencsét!",
+                "🎉 **Sikeresen jelentkeztél "
+                "a nyereményjátékra!** Sok szerencsét!",
                 ephemeral=True
             )
 
@@ -227,17 +248,21 @@ class GiveawayView(discord.ui.View):
         guild = interaction.guild
 
         if guild is None:
+
             await interaction.response.send_message(
                 "❌ Ez csak szerveren használható.",
                 ephemeral=True
             )
+
             return
 
-        if not has_management_access(interaction):
+        if not has_management_access(
+            interaction
+        ):
 
             await interaction.response.send_message(
-                "❌ Ezt a gombot csak a **Leader**, admin vagy "
-                "szervertulajdonos használhatja!",
+                "❌ Ezt a gombot csak a **Leader**, "
+                "admin vagy szervertulajdonos használhatja!",
                 ephemeral=True
             )
 
@@ -265,13 +290,18 @@ class GiveawayView(discord.ui.View):
 
         if interaction.message.embeds:
 
-            embed = interaction.message.embeds[0]
+            embed = (
+                interaction.message.embeds[0]
+            )
 
         else:
 
             embed = discord.Embed()
 
-        embed.title = "🎉 NYEREMÉNYJÁTÉK VÉGET ÉRT 🎉"
+        embed.title = (
+            "🎉 NYEREMÉNYJÁTÉK VÉGET ÉRT 🎉"
+        )
+
         embed.color = discord.Color.gold()
 
         embed.add_field(
@@ -298,8 +328,9 @@ class GiveawayView(discord.ui.View):
         if interaction.channel:
 
             await interaction.channel.send(
-                f"🎊 **GRATULÁLUNK!** {winner_mention} "
-                f"megnyerte: **{self.prize}**!"
+                f"🎊 **GRATULÁLUNK!** "
+                f"{winner_mention} megnyerte: "
+                f"**{self.prize}**!"
             )
 
 
@@ -311,7 +342,9 @@ class DutyView(discord.ui.View):
 
     def __init__(self):
 
-        super().__init__(timeout=None)
+        super().__init__(
+            timeout=None
+        )
 
     # =====================================================
     # 🟢 DUTY BE
@@ -339,7 +372,9 @@ class DutyView(discord.ui.View):
 
             return
 
-        duty_start_times[user_id] = datetime.datetime.now()
+        duty_start_times[user_id] = (
+            datetime.datetime.now()
+        )
 
         await interaction.response.send_message(
             "🟢 **Szolgálatba léptél!**\n"
@@ -397,12 +432,17 @@ class DutyView(discord.ui.View):
         session_seconds = max(
             0,
             int(
-                (now - start_time).total_seconds()
+                (
+                    now - start_time
+                ).total_seconds()
             )
         )
 
         duty_total_seconds[user_id] = (
-            duty_total_seconds.get(user_id, 0)
+            duty_total_seconds.get(
+                user_id,
+                0
+            )
             + session_seconds
         )
 
@@ -439,8 +479,10 @@ class DutyView(discord.ui.View):
             embed = discord.Embed(
                 title="🔴 Duty Leadás",
                 description=(
-                    f"**Tag:** {interaction.user.mention}\n"
-                    f"**Eltöltött idő:** {time_str}\n"
+                    f"**Tag:** "
+                    f"{interaction.user.mention}\n"
+                    f"**Eltöltött idő:** "
+                    f"{time_str}\n"
                     f"**Kilépés:** "
                     f"<t:{int(now.timestamp())}:F>"
                 ),
@@ -510,7 +552,8 @@ class DutyView(discord.ui.View):
         embed = discord.Embed(
             title="📊 Szolgálati Idő Statisztika",
             description=(
-                f"**Tag:** {interaction.user.mention}\n\n"
+                f"**Tag:** "
+                f"{interaction.user.mention}\n\n"
                 f"**Összesített szolgálati időd:**\n"
                 f"⏱️ **{hours} óra "
                 f"{minutes} perc "
@@ -567,7 +610,9 @@ class AcceptButton(discord.ui.Button):
 
             return
 
-        if not has_management_access(interaction):
+        if not has_management_access(
+            interaction
+        ):
 
             await interaction.response.send_message(
                 "❌ Ezt csak a **Leader**, admin vagy "
@@ -676,7 +721,8 @@ class AcceptButton(discord.ui.Button):
                 role,
                 reason=(
                     f"Frakcióba felvétel - "
-                    f"elfogadta: {interaction.user}"
+                    f"elfogadta: "
+                    f"{interaction.user}"
                 )
             )
 
@@ -684,8 +730,8 @@ class AcceptButton(discord.ui.Button):
 
             await interaction.followup.send(
                 "❌ Nem sikerült kiosztani a Frakciótag rangot!\n\n"
-                "Ellenőrizd a bot jogosultságait és a "
-                "szerepkör sorrendjét."
+                "Ellenőrizd a bot jogosultságait és "
+                "a szerepkör sorrendjét."
             )
 
             return
@@ -736,10 +782,15 @@ class AcceptButton(discord.ui.Button):
                 text="Üdvözlünk a frakcióban!"
             )
 
-            welcome_embed.timestamp = datetime.datetime.now()
+            welcome_embed.timestamp = (
+                datetime.datetime.now()
+            )
 
             await belepo_chan.send(
-                content=f"👋 **Üdvözöljük {member.mention}!**",
+                content=(
+                    f"👋 **Üdvözöljük "
+                    f"{member.mention}!**"
+                ),
                 embed=welcome_embed
             )
 
@@ -751,7 +802,8 @@ class AcceptButton(discord.ui.Button):
 
             await member.send(
                 "🎉 **Sikeres felvétel!**\n\n"
-                f"A Leader ({interaction.user.display_name}) "
+                f"A Leader "
+                f"({interaction.user.display_name}) "
                 "elfogadta a jelentkezésedet.\n\n"
                 "Most már láthatod a frakció szerverét."
             )
@@ -772,14 +824,17 @@ class AcceptButton(discord.ui.Button):
             try:
 
                 await waiting_channel.delete(
-                    reason=f"Frakcióba felvett tag: {member}"
+                    reason=(
+                        f"Frakcióba felvett tag: "
+                        f"{member}"
+                    )
                 )
 
             except discord.Forbidden:
 
                 await interaction.followup.send(
-                    "⚠️ A tag felvétele sikerült, de a "
-                    "várótermet nem tudtam törölni."
+                    "⚠️ A tag felvétele sikerült, "
+                    "de a várótermet nem tudtam törölni."
                 )
 
             except discord.NotFound:
@@ -787,10 +842,6 @@ class AcceptButton(discord.ui.Button):
 
             except discord.HTTPException:
                 pass
-
-        # =================================================
-        # 🔘 GOMB LETILTÁSA
-        # =================================================
 
         self.disabled = True
         self.label = "✅ Elfogadva"
@@ -816,7 +867,9 @@ class AcceptView(discord.ui.View):
         waiting_channel_id
     ):
 
-        super().__init__(timeout=None)
+        super().__init__(
+            timeout=None
+        )
 
         self.add_item(
             AcceptButton(
@@ -874,7 +927,8 @@ async def on_member_join(
     for channel in waiting_category.text_channels:
 
         if channel.topic == (
-            f"FRAKCIOS_JELENTKEZES:{member.id}"
+            f"FRAKCIOS_JELENTKEZES:"
+            f"{member.id}"
         ):
 
             existing_channel = channel
@@ -936,7 +990,9 @@ async def on_member_join(
         safe_name = safe_name[:60]
 
         channel_name = (
-            f"jelentkezés-{safe_name}-{member.id}"
+            f"jelentkezés-"
+            f"{safe_name}-"
+            f"{member.id}"
         )
 
         try:
@@ -951,8 +1007,8 @@ async def on_member_join(
                     ),
                     overwrites=overwrites,
                     reason=(
-                        f"Automatikus jelentkezési szoba: "
-                        f"{member}"
+                        f"Automatikus jelentkezési "
+                        f"szoba: {member}"
                     )
                 )
             )
@@ -977,11 +1033,14 @@ async def on_member_join(
         try:
 
             await waiting_channel.send(
-                f"👋 **Üdv a szerveren, {member.mention}!**\n\n"
-                "Ez a **saját privát jelentkezési szobád**.\n"
+                f"👋 **Üdv a szerveren, "
+                f"{member.mention}!**\n\n"
+                "Ez a **saját privát jelentkezési "
+                "szobád**.\n"
                 "Itt a vezetőség tud veled beszélni.\n\n"
-                "📋 A vezetőség a jelentkezésedet a "
-                "**📋-jelentkezések** csatornában tudja elfogadni.\n\n"
+                "📋 A vezetőség a jelentkezésedet "
+                "a **📋-jelentkezések** csatornában "
+                "tudja elfogadni.\n\n"
                 "⏳ Kérlek várj, amíg egy Leader "
                 "felveszi veled a kapcsolatot."
             )
@@ -989,7 +1048,8 @@ async def on_member_join(
         except Exception as e:
 
             print(
-                f"[JELENTKEZÉS] Üzenetküldési hiba: {e}"
+                f"[JELENTKEZÉS] Üzenetküldési "
+                f"hiba: {e}"
             )
 
     # =====================================================
@@ -999,13 +1059,15 @@ async def on_member_join(
     embed = discord.Embed(
         title="📥 ÚJ FRAKCIÓJELENTKEZÉS",
         description=(
-            f"👤 **Jelentkező:** {member.mention}\n"
+            f"👤 **Jelentkező:** "
+            f"{member.mention}\n"
             f"🆔 **ID:** `{member.id}`\n"
             f"🔒 **Privát szoba:** "
             f"{waiting_channel.mention}\n\n"
-            "A jelentkezővel a saját privát szobájában "
-            "tudtok beszélni.\n\n"
-            "Ha elfogadjátok, nyomjátok meg az alábbi gombot."
+            "A jelentkezővel a saját privát "
+            "szobájában tudtok beszélni.\n\n"
+            "Ha elfogadjátok, nyomjátok meg "
+            "az alábbi gombot."
         ),
         color=discord.Color.blue()
     )
@@ -1014,7 +1076,9 @@ async def on_member_join(
         text="Automatikus frakciójelentkezés"
     )
 
-    embed.timestamp = datetime.datetime.now()
+    embed.timestamp = (
+        datetime.datetime.now()
+    )
 
     try:
 
@@ -1040,307 +1104,6 @@ async def on_member_join(
         )
 
 
-_views_loaded = False
-_commands_synced = False
-
-
-@bot.event
-async def on_ready():
-
-    global _views_loaded
-    global _commands_synced
-
-    # =====================================================
-    # 🔄 SLASH PARANCSOK SZINKRONIZÁLÁSA
-    # =====================================================
-
-    if not _commands_synced:
-
-        all_synced = True
-
-        for guild in bot.guilds:
-
-            try:
-
-                # A globális command tree jelenlegi
-                # parancsait átmásoljuk az adott guildre.
-                bot.tree.copy_global_to(guild=guild)
-
-                synced = await bot.tree.sync(
-                    guild=guild
-                )
-
-                print(
-                    f"✅ {guild.name} | "
-                    f"{len(synced)} slash parancs szinkronizálva."
-                )
-
-            except Exception as e:
-
-                all_synced = False
-
-                print(
-                    f"❌ Slash parancs sync hiba | "
-                    f"{guild.name}: {e}"
-                )
-
-        _commands_synced = all_synced
-
-    # =====================================================
-    # 🔘 RÉGI GOMBOK BETÖLTÉSE
-    # =====================================================
-
-    if not _views_loaded:
-
-        bot.add_view(DutyView())
-
-        for guild in bot.guilds:
-
-            waiting_category = discord.utils.get(
-                guild.categories,
-                name="🚪 VÁRÓTERMEK"
-            )
-
-            if waiting_category is None:
-                continue
-
-            for channel in waiting_category.text_channels:
-
-                if not channel.topic:
-                    continue
-
-                prefix = "FRAKCIOS_JELENTKEZES:"
-
-                if not channel.topic.startswith(prefix):
-                    continue
-
-                try:
-                    member_id = int(
-                        channel.topic[len(prefix):]
-                    )
-                except ValueError:
-                    continue
-
-                try:
-
-                    bot.add_view(
-                        AcceptView(
-                            member_id,
-                            channel.id
-                        )
-                    )
-
-                except ValueError:
-                    pass
-
-        _views_loaded = True
-
-    print(
-        f"✅ Bejelentkezve: {bot.user} | "
-        f"Szerverek: {len(bot.guilds)}"
-    )
-
-            command_names = [
-                command.name
-                for command in synced
-            ]
-
-            print(
-                f"   📋 Parancsok: "
-                f"{', '.join(command_names)}"
-            )
-
-        except Exception as e:
-
-            success = False
-
-            print(
-                f"❌ Slash sync hiba: "
-                f"{guild.name} | {e}"
-            )
-
-    if success:
-
-        _commands_synced = True
-
-        print(
-            "✅ AZ ÖSSZES SLASH PARANCS SZINKRONIZÁLVA!"
-        )
-
-    else:
-
-        print(
-            "⚠️ Néhány slash parancs szinkronizálása "
-            "nem sikerült. Újrapróbálom."
-        )
-
-
-# =========================================================
-# 🔄 RÉGI GOMBOK VISSZATÖLTÉSE
-# =========================================================
-
-async def load_persistent_views():
-
-    global _views_loaded
-
-    if _views_loaded:
-        return
-
-    # Duty gomb
-    try:
-
-        bot.add_view(
-            DutyView()
-        )
-
-        print(
-            "✅ DutyView betöltve."
-        )
-
-    except Exception as e:
-
-        print(
-            f"❌ DutyView hiba: {e}"
-        )
-
-    # Jelentkezési gombok
-    for guild in bot.guilds:
-
-        waiting_category = discord.utils.get(
-            guild.categories,
-            name="🚪 VÁRÓTERMEK"
-        )
-
-        if waiting_category is None:
-            continue
-
-        for channel in waiting_category.text_channels:
-
-            if not channel.topic:
-                continue
-
-            prefix = (
-                "FRAKCIOS_JELENTKEZES:"
-            )
-
-            if not channel.topic.startswith(
-                prefix
-            ):
-                continue
-
-            try:
-
-                member_id = int(
-                    channel.topic[
-                        len(prefix):
-                    ]
-                )
-
-            except ValueError:
-
-                continue
-
-            try:
-
-                bot.add_view(
-                    AcceptView(
-                        member_id,
-                        channel.id
-                    )
-                )
-
-                print(
-                    f"✅ Jelentkezési gomb betöltve: "
-                    f"{channel.name}"
-                )
-
-            except Exception as e:
-
-                print(
-                    f"⚠️ Gomb betöltési hiba: "
-                    f"{channel.name} | {e}"
-                )
-
-    _views_loaded = True
-
-    print(
-        "✅ Minden tartós gomb betöltve."
-    )
-
-
-# =========================================================
-# 🟢 ON READY
-# =========================================================
-
-@bot.event
-async def on_ready():
-
-    print(
-        f"🟢 BEJELENTKEZVE: {bot.user}"
-    )
-
-    print(
-        f"🆔 Bot ID: {bot.user.id}"
-    )
-
-    print(
-        f"🌐 Szerverek száma: {len(bot.guilds)}"
-    )
-
-    # Slash command sync
-    await sync_guild_commands()
-
-    # Persistent views
-    await load_persistent_views()
-
-    print(
-        "🚀 BOT TELJESEN ELINDULT!"
-    )
-
-
-# =========================================================
-# ❌ SLASH PARANCS HIBAKEZELÉS
-# =========================================================
-
-@bot.tree.error
-async def on_app_command_error(
-    interaction: discord.Interaction,
-    error: app_commands.AppCommandError
-):
-
-    print(
-        f"❌ SLASH COMMAND HIBA: "
-        f"{type(error).__name__}: {error}"
-    )
-
-    message = (
-        "❌ Hiba történt a parancs végrehajtásakor.\n"
-        "Nézd meg a Render logját a pontos hibáért."
-    )
-
-    try:
-
-        if interaction.response.is_done():
-
-            await interaction.followup.send(
-                message,
-                ephemeral=True
-            )
-
-        else:
-
-            await interaction.response.send_message(
-                message,
-                ephemeral=True
-            )
-
-    except Exception as e:
-
-        print(
-            f"❌ Hibaüzenet küldési hiba: {e}"
-        )
-
-
 # =========================================================
 # 🎁 /ajandek
 # =========================================================
@@ -1357,7 +1120,9 @@ async def ajandek(
     nyeremeny: str
 ):
 
-    if not has_management_access(interaction):
+    if not has_management_access(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ Ezt csak a **Leader**, admin vagy "
@@ -1378,10 +1143,15 @@ async def ajandek(
     )
 
     embed.set_footer(
-        text=f"Indította: {interaction.user.display_name}"
+        text=(
+            f"Indította: "
+            f"{interaction.user.display_name}"
+        )
     )
 
-    embed.timestamp = datetime.datetime.now()
+    embed.timestamp = (
+        datetime.datetime.now()
+    )
 
     view = GiveawayView(
         prize=nyeremeny,
@@ -1414,14 +1184,16 @@ async def remove_all(
     if interaction.user.id != guild.owner_id:
 
         await interaction.response.send_message(
-            "❌ Ezt kizárólag a szerver tulajdonosa használhatja!",
+            "❌ Ezt kizárólag a szerver tulajdonosa "
+            "használhatja!",
             ephemeral=True
         )
 
         return
 
     await interaction.response.send_message(
-        "💣 **A szerver csatornáinak törlése megkezdődött...**",
+        "💣 **A szerver csatornáinak törlése "
+        "megkezdődött...**",
         ephemeral=True
     )
 
@@ -1455,10 +1227,13 @@ async def clear_messages(
     mennyiseg: int = 100
 ):
 
-    if not has_management_access(interaction):
+    if not has_management_access(
+        interaction
+    ):
 
         await interaction.response.send_message(
-            "❌ Nincs jogosultságod az üzenetek törléséhez!",
+            "❌ Nincs jogosultságod az üzenetek "
+            "törléséhez!",
             ephemeral=True
         )
 
@@ -1506,7 +1281,9 @@ async def setup_frakcio(
     interaction: discord.Interaction
 ):
 
-    if not has_management_access(interaction):
+    if not has_management_access(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ Ezt csak a **Leader**, admin vagy "
@@ -1516,322 +1293,494 @@ async def setup_frakcio(
 
         return
 
-    await interaction.response.defer()
-
     guild = interaction.guild
 
     if guild is None:
+
+        await interaction.response.send_message(
+            "❌ Ez csak Discord szerveren használható!",
+            ephemeral=True
+        )
+
         return
 
-    # =====================================================
-    # 🎖️ RANGOK
-    # =====================================================
+    await interaction.response.defer()
 
-    leader = discord.utils.get(
-        guild.roles,
-        name="Leader"
-    )
+    try:
 
-    if leader is None:
+        # =================================================
+        # 🎖️ RANGOK
+        # =================================================
 
-        leader = await guild.create_role(
-            name="Leader",
-            color=discord.Color.red(),
-            permissions=discord.Permissions(
-                administrator=True
+        leader = discord.utils.get(
+            guild.roles,
+            name="Leader"
+        )
+
+        if leader is None:
+
+            leader = await guild.create_role(
+                name="Leader",
+                color=discord.Color.red(),
+                permissions=discord.Permissions(
+                    administrator=True
+                )
             )
+
+        subleader = discord.utils.get(
+            guild.roles,
+            name="Subleader"
         )
 
-    subleader = discord.utils.get(
-        guild.roles,
-        name="Subleader"
-    )
+        if subleader is None:
 
-    if subleader is None:
+            subleader = await guild.create_role(
+                name="Subleader",
+                color=discord.Color.orange()
+            )
 
-        subleader = await guild.create_role(
-            name="Subleader",
-            color=discord.Color.orange()
+        tag = discord.utils.get(
+            guild.roles,
+            name="Frakciótag"
         )
 
-    tag = discord.utils.get(
-        guild.roles,
-        name="Frakciótag"
-    )
+        if tag is None:
 
-    if tag is None:
+            tag = await guild.create_role(
+                name="Frakciótag",
+                color=discord.Color.blue()
+            )
 
-        tag = await guild.create_role(
-            name="Frakciótag",
+        # =================================================
+        # 🔐 JOGOSULTSÁGOK
+        # =================================================
+
+        overwrites_hidden = {
+
+            guild.default_role:
+                discord.PermissionOverwrite(
+                    view_channel=False
+                ),
+
+            tag:
+                discord.PermissionOverwrite(
+                    view_channel=True
+                ),
+
+            leader:
+                discord.PermissionOverwrite(
+                    view_channel=True
+                ),
+
+            subleader:
+                discord.PermissionOverwrite(
+                    view_channel=True
+                )
+        }
+
+        overwrites_admin = {
+
+            guild.default_role:
+                discord.PermissionOverwrite(
+                    view_channel=False
+                ),
+
+            leader:
+                discord.PermissionOverwrite(
+                    view_channel=True
+                ),
+
+            subleader:
+                discord.PermissionOverwrite(
+                    view_channel=True
+                )
+        }
+
+        waiting_overwrites = {
+
+            guild.default_role:
+                discord.PermissionOverwrite(
+                    view_channel=False
+                ),
+
+            leader:
+                discord.PermissionOverwrite(
+                    view_channel=True
+                ),
+
+            subleader:
+                discord.PermissionOverwrite(
+                    view_channel=True
+                )
+        }
+
+        # =================================================
+        # 🚪 VÁRÓTERMEK
+        # =================================================
+
+        cat_varo = discord.utils.get(
+            guild.categories,
+            name="🚪 VÁRÓTERMEK"
+        )
+
+        if cat_varo is None:
+
+            cat_varo = await guild.create_category(
+                "🚪 VÁRÓTERMEK",
+                overwrites=waiting_overwrites
+            )
+
+        else:
+
+            await cat_varo.edit(
+                overwrites=waiting_overwrites
+            )
+
+        # =================================================
+        # 📌 INFORMÁCIÓK
+        # =================================================
+
+        cat_info = discord.utils.get(
+            guild.categories,
+            name="📌 INFORMÁCIÓK"
+        )
+
+        if cat_info is None:
+
+            cat_info = await guild.create_category(
+                "📌 INFORMÁCIÓK",
+                overwrites=overwrites_hidden
+            )
+
+        else:
+
+            await cat_info.edit(
+                overwrites=overwrites_hidden
+            )
+
+        info_channels = [
+            "👋-belépő",
+            "📢-bejelentések",
+            "📜-szabályzat",
+            "🎖️-rangok-és-fizetések",
+            "📝-minták-és-nyomtatványok",
+            "🚗-járműpark-és-kulcsok",
+            "❓-gyakori-kérdések"
+        ]
+
+        for name in info_channels:
+
+            if discord.utils.get(
+                cat_info.text_channels,
+                name=name
+            ) is None:
+
+                await cat_info.create_text_channel(
+                    name
+                )
+
+        # =================================================
+        # 💼 IC ÉLET
+        # =================================================
+
+        cat_ic_elet = discord.utils.get(
+            guild.categories,
+            name="💼 IC ÉLET"
+        )
+
+        if cat_ic_elet is None:
+
+            cat_ic_elet = await guild.create_category(
+                "💼 IC ÉLET",
+                overwrites=overwrites_hidden
+            )
+
+        else:
+
+            await cat_ic_elet.edit(
+                overwrites=overwrites_hidden
+            )
+
+        for name in [
+            "💬-ic-chat",
+            "📸-ic-fotók-és-kamera",
+            "📝-szabadságkérelmek",
+            "📋-ic-ötletek-és-reformok",
+            "📂-ic-adatok"
+        ]:
+
+            if discord.utils.get(
+                cat_ic_elet.text_channels,
+                name=name
+            ) is None:
+
+                await cat_ic_elet.create_text_channel(
+                    name
+                )
+
+        # =================================================
+        # 💭 OOC ÉLET
+        # =================================================
+
+        cat_ooc = discord.utils.get(
+            guild.categories,
+            name="💭 OOC ÉLET"
+        )
+
+        if cat_ooc is None:
+
+            cat_ooc = await guild.create_category(
+                "💭 OOC ÉLET",
+                overwrites=overwrites_hidden
+            )
+
+        else:
+
+            await cat_ooc.edit(
+                overwrites=overwrites_hidden
+            )
+
+        for name in [
+            "💭-ooc-chat",
+            "📷-rp-élményképek",
+            "💡-ötletek-és-javaslatok",
+            "😂-mémek-és-offtopic"
+        ]:
+
+            if discord.utils.get(
+                cat_ooc.text_channels,
+                name=name
+            ) is None:
+
+                await cat_ooc.create_text_channel(
+                    name
+                )
+
+        # =================================================
+        # 💼 IC MŰKÖDÉS & DUTY
+        # =================================================
+
+        cat_ic = discord.utils.get(
+            guild.categories,
+            name="💼 IC MŰKÖDÉS & DUTY"
+        )
+
+        if cat_ic is None:
+
+            cat_ic = await guild.create_category(
+                "💼 IC MŰKÖDÉS & DUTY",
+                overwrites=overwrites_hidden
+            )
+
+        else:
+
+            await cat_ic.edit(
+                overwrites=overwrites_hidden
+            )
+
+        duty_chan = discord.utils.get(
+            cat_ic.text_channels,
+            name="⏰-duty-mérő"
+        )
+
+        if duty_chan is None:
+
+            duty_chan = await cat_ic.create_text_channel(
+                "⏰-duty-mérő"
+            )
+
+        for name in [
+            "📋-szolgálati-napló",
+            "📦-frakció-széf-és-raktár",
+            "⚔️-akciók-és-tervek",
+            "🤝-diplomácia",
+            "💰-kassza-és-elszámolás"
+        ]:
+
+            if discord.utils.get(
+                cat_ic.text_channels,
+                name=name
+            ) is None:
+
+                await cat_ic.create_text_channel(
+                    name
+                )
+
+        # =================================================
+        # ⏰ DUTY ÜZENET
+        # =================================================
+
+        embed_duty = discord.Embed(
+            title="⏰ Szolgálati Idő Mérő",
+            description=(
+                "Használd az alábbi gombokat!\n\n"
+                "🟢 **Duty Be**\n"
+                "Szolgálat megkezdése\n\n"
+                "🔴 **Duty Ki**\n"
+                "Szolgálat befejezése\n\n"
+                "📊 **Összidő**\n"
+                "Összesített szolgálati idő"
+            ),
             color=discord.Color.blue()
         )
 
-    # =====================================================
-    # 🔐 JOGOSULTSÁGOK
-    # =====================================================
+        # Csak akkor küldjük újra a panelt,
+        # ha még nincs duty panel.
+        duty_panel_exists = False
 
-    overwrites_hidden = {
+        async for message in duty_chan.history(
+            limit=50
+        ):
 
-        guild.default_role:
-            discord.PermissionOverwrite(
-                view_channel=False
-            ),
+            if (
+                message.author == bot.user
+                and message.embeds
+                and message.embeds[0].title
+                == "⏰ Szolgálati Idő Mérő"
+            ):
 
-        tag:
-            discord.PermissionOverwrite(
-                view_channel=True
-            ),
+                duty_panel_exists = True
+                break
 
-        leader:
-            discord.PermissionOverwrite(
-                view_channel=True
-            ),
+        if not duty_panel_exists:
 
-        subleader:
-            discord.PermissionOverwrite(
-                view_channel=True
+            await duty_chan.send(
+                embed=embed_duty,
+                view=DutyView()
             )
-    }
 
-    overwrites_admin = {
+        # =================================================
+        # 🔒 VEZETŐSÉG
+        # =================================================
 
-        guild.default_role:
-            discord.PermissionOverwrite(
-                view_channel=False
-            ),
+        cat_vez = discord.utils.get(
+            guild.categories,
+            name="🔒 VEZETŐSÉG"
+        )
 
-        leader:
-            discord.PermissionOverwrite(
-                view_channel=True
-            ),
+        if cat_vez is None:
 
-        subleader:
-            discord.PermissionOverwrite(
-                view_channel=True
+            cat_vez = await guild.create_category(
+                "🔒 VEZETŐSÉG",
+                overwrites=overwrites_admin
             )
-    }
 
-    waiting_overwrites = {
+        else:
 
-        guild.default_role:
-            discord.PermissionOverwrite(
-                view_channel=False
-            ),
-
-        leader:
-            discord.PermissionOverwrite(
-                view_channel=True
-            ),
-
-        subleader:
-            discord.PermissionOverwrite(
-                view_channel=True
+            await cat_vez.edit(
+                overwrites=overwrites_admin
             )
-    }
 
-    # =====================================================
-    # 🚪 VÁRÓTERMEK
-    # =====================================================
+        for name in [
+            "🔒-vezetőségi-chat",
+            "📋-jelentkezések",
+            "⚠️-figyelmeztetések",
+            "🚫-feketelista",
+            "📑-vezetőségi-jegyzetek"
+        ]:
 
-    cat_varo = discord.utils.get(
-        guild.categories,
-        name="🚪 VÁRÓTERMEK"
-    )
+            if discord.utils.get(
+                cat_vez.text_channels,
+                name=name
+            ) is None:
 
-    if cat_varo is None:
+                await cat_vez.create_text_channel(
+                    name
+                )
 
-        cat_varo = await guild.create_category(
-            "🚪 VÁRÓTERMEK",
-            overwrites=waiting_overwrites
+        # =================================================
+        # 🔊 HANGCSATORNÁK
+        # =================================================
+
+        cat_voice = discord.utils.get(
+            guild.categories,
+            name="🔊 HANGCSATORNÁK"
         )
 
-    else:
+        if cat_voice is None:
 
-        await cat_varo.edit(
-            overwrites=waiting_overwrites
+            cat_voice = await guild.create_category(
+                "🔊 HANGCSATORNÁK",
+                overwrites=overwrites_hidden
+            )
+
+        else:
+
+            await cat_voice.edit(
+                overwrites=overwrites_hidden
+            )
+
+        for name in [
+            "🔊 OOC Beszélgető 1",
+            "🔊 OOC Beszélgető 2",
+            "🔊 Rádió 1 [IC / RP]",
+            "🔊 Rádió 2 [IC / RP]",
+            "🔊 Akció / Taktikai 1",
+            "🔊 Akció / Taktikai 2",
+            "💤 AFK / Inaktív"
+        ]:
+
+            if discord.utils.get(
+                cat_voice.voice_channels,
+                name=name
+            ) is None:
+
+                await cat_voice.create_voice_channel(
+                    name
+                )
+
+        if discord.utils.get(
+            cat_voice.voice_channels,
+            name="🔒 Vezetőségi Tárgyaló"
+        ) is None:
+
+            await cat_voice.create_voice_channel(
+                "🔒 Vezetőségi Tárgyaló",
+                overwrites=overwrites_admin
+            )
+
+        await interaction.followup.send(
+            "✅ **A teljes frakció szerverstruktúra "
+            "sikeresen létrejött!**\n\n"
+            "🎖️ Leader\n"
+            "🎖️ Subleader\n"
+            "🎖️ Frakciótag\n"
+            "🚪 Várótermek\n"
+            "📌 Információk\n"
+            "💼 IC élet\n"
+            "💭 OOC élet\n"
+            "⏰ Duty rendszer\n"
+            "🔒 Vezetőség\n"
+            "🔊 Hangcsatornák",
+            ephemeral=True
         )
 
-    # =====================================================
-    # 📌 INFORMÁCIÓK
-    # =====================================================
+    except discord.Forbidden:
 
-    cat_info = await guild.create_category(
-        "📌 INFORMÁCIÓK",
-        overwrites=overwrites_hidden
-    )
-
-    info_channels = [
-        "👋-belépő",
-        "📢-bejelentések",
-        "📜-szabályzat",
-        "🎖️-rangok-és-fizetések",
-        "📝-minták-és-nyomtatványok",
-        "🚗-járműpark-és-kulcsok",
-        "❓-gyakori-kérdések"
-    ]
-
-    for name in info_channels:
-
-        await cat_info.create_text_channel(
-            name
+        await interaction.followup.send(
+            "❌ A botnak nincs elég Discord jogosultsága "
+            "a szerkezet létrehozásához.",
+            ephemeral=True
         )
 
-    # =====================================================
-    # 💼 IC ÉLET
-    # =====================================================
+    except discord.HTTPException as e:
 
-    cat_ic_elet = await guild.create_category(
-        "💼 IC ÉLET",
-        overwrites=overwrites_hidden
-    )
-
-    for name in [
-        "💬-ic-chat",
-        "📸-ic-fotók-és-kamera",
-        "📝-szabadságkérelmek",
-        "📋-ic-ötletek-és-reformok",
-        "📂-ic-adatok"
-    ]:
-
-        await cat_ic_elet.create_text_channel(
-            name
+        await interaction.followup.send(
+            f"❌ Discord hiba történt: `{e}`",
+            ephemeral=True
         )
 
-    # =====================================================
-    # 💭 OOC ÉLET
-    # =====================================================
+    except Exception as e:
 
-    cat_ooc = await guild.create_category(
-        "💭 OOC ÉLET",
-        overwrites=overwrites_hidden
-    )
-
-    for name in [
-        "💭-ooc-chat",
-        "📷-rp-élményképek",
-        "💡-ötletek-és-javaslatok",
-        "😂-mémek-és-offtopic"
-    ]:
-
-        await cat_ooc.create_text_channel(
-            name
+        print(
+            f"❌ /setup_frakcio hiba: {type(e).__name__}: {e}"
         )
 
-    # =====================================================
-    # 💼 IC MŰKÖDÉS & DUTY
-    # =====================================================
-
-    cat_ic = await guild.create_category(
-        "💼 IC MŰKÖDÉS & DUTY",
-        overwrites=overwrites_hidden
-    )
-
-    duty_chan = await cat_ic.create_text_channel(
-        "⏰-duty-mérő"
-    )
-
-    await cat_ic.create_text_channel(
-        "📋-szolgálati-napló"
-    )
-
-    await cat_ic.create_text_channel(
-        "📦-frakció-széf-és-raktár"
-    )
-
-    await cat_ic.create_text_channel(
-        "⚔️-akciók-és-tervek"
-    )
-
-    await cat_ic.create_text_channel(
-        "🤝-diplomácia"
-    )
-
-    await cat_ic.create_text_channel(
-        "💰-kassza-és-elszámolás"
-    )
-
-    embed_duty = discord.Embed(
-        title="⏰ Szolgálati Idő Mérő",
-        description=(
-            "Használd az alábbi gombokat!\n\n"
-            "🟢 **Duty Be**\n"
-            "Szolgálat megkezdése\n\n"
-            "🔴 **Duty Ki**\n"
-            "Szolgálat befejezése\n\n"
-            "📊 **Összidő**\n"
-            "Összesített szolgálati idő"
-        ),
-        color=discord.Color.blue()
-    )
-
-    await duty_chan.send(
-        embed=embed_duty,
-        view=DutyView()
-    )
-
-    # =====================================================
-    # 🔒 VEZETŐSÉG
-    # =====================================================
-
-    cat_vez = await guild.create_category(
-        "🔒 VEZETŐSÉG",
-        overwrites=overwrites_admin
-    )
-
-    for name in [
-        "🔒-vezetőségi-chat",
-        "📋-jelentkezések",
-        "⚠️-figyelmeztetések",
-        "🚫-feketelista",
-        "📑-vezetőségi-jegyzetek"
-    ]:
-
-        await cat_vez.create_text_channel(
-            name
+        await interaction.followup.send(
+            f"❌ Hiba történt: `{type(e).__name__}`\n"
+            "Nézd meg a Render logját.",
+            ephemeral=True
         )
-
-    # =====================================================
-    # 🔊 HANGCSATORNÁK
-    # =====================================================
-
-    cat_voice = await guild.create_category(
-        "🔊 HANGCSATORNÁK",
-        overwrites=overwrites_hidden
-    )
-
-    for name in [
-        "🔊 OOC Beszélgető 1",
-        "🔊 OOC Beszélgető 2",
-        "🔊 Rádió 1 [IC / RP]",
-        "🔊 Rádió 2 [IC / RP]",
-        "🔊 Akció / Taktikai 1",
-        "🔊 Akció / Taktikai 2",
-        "💤 AFK / Inaktív"
-    ]:
-
-        await cat_voice.create_voice_channel(
-            name
-        )
-
-    await cat_voice.create_voice_channel(
-        "🔒 Vezetőségi Tárgyaló",
-        overwrites=overwrites_admin
-    )
-
-    await interaction.followup.send(
-        "✅ **A teljes frakció szerverstruktúra sikeresen létrejött!**\n\n"
-        "🎖️ Leader\n"
-        "🎖️ Subleader\n"
-        "🎖️ Frakciótag\n"
-        "🚪 Várótermek\n"
-        "📌 Információk\n"
-        "💼 IC élet\n"
-        "💭 OOC élet\n"
-        "⏰ Duty rendszer\n"
-        "🔒 Vezetőség\n"
-        "🔊 Hangcsatornák",
-        ephemeral=True
-    )
 
 
 # =========================================================
@@ -1852,7 +1801,9 @@ async def bejelentes(
     uzenet: str
 ):
 
-    if not has_management_access(interaction):
+    if not has_management_access(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ Nincs jogosultságod!",
@@ -1869,7 +1820,8 @@ async def bejelentes(
     if chan is None:
 
         await interaction.response.send_message(
-            "❌ Nem találom a 📢-bejelentések csatornát.",
+            "❌ Nem találom a "
+            "📢-bejelentések csatornát.",
             ephemeral=True
         )
 
@@ -1882,10 +1834,15 @@ async def bejelentes(
     )
 
     embed.set_footer(
-        text=f"Kiadta: {interaction.user.display_name}"
+        text=(
+            f"Kiadta: "
+            f"{interaction.user.display_name}"
+        )
     )
 
-    embed.timestamp = datetime.datetime.now()
+    embed.timestamp = (
+        datetime.datetime.now()
+    )
 
     await chan.send(
         content="@everyone",
@@ -1916,7 +1873,9 @@ async def warn(
     indok: str
 ):
 
-    if not has_management_access(interaction):
+    if not has_management_access(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ Nincs jogosultságod!",
@@ -1933,7 +1892,8 @@ async def warn(
     if warn_chan is None:
 
         await interaction.response.send_message(
-            "❌ Nem találom a figyelmeztetések csatornát.",
+            "❌ Nem találom a figyelmeztetések "
+            "csatornát.",
             ephemeral=True
         )
 
@@ -1949,7 +1909,9 @@ async def warn(
         color=discord.Color.dark_red()
     )
 
-    embed.timestamp = datetime.datetime.now()
+    embed.timestamp = (
+        datetime.datetime.now()
+    )
 
     await warn_chan.send(
         embed=embed
@@ -1958,7 +1920,8 @@ async def warn(
     try:
 
         await tag.send(
-            "⚠️ **Figyelmeztetést kaptál a frakcióban!**\n"
+            "⚠️ **Figyelmeztetést kaptál "
+            "a frakcióban!**\n"
             f"**Indok:** {indok}\n"
             f"**Adta:** {interaction.user.name}"
         )
@@ -1967,7 +1930,8 @@ async def warn(
         pass
 
     await interaction.response.send_message(
-        f"✅ Figyelmeztetés rögzítve: {tag.mention}",
+        f"✅ Figyelmeztetés rögzítve: "
+        f"{tag.mention}",
         ephemeral=True
     )
 
@@ -1988,7 +1952,9 @@ async def everyone_cmd(
     uzenet: str
 ):
 
-    if not has_management_access(interaction):
+    if not has_management_access(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ Nincs jogosultságod!",
@@ -2008,7 +1974,8 @@ async def everyone_cmd(
     ):
 
         await interaction.response.send_message(
-            "⚠️ Jelenleg nincsenek nyitott várótermek!",
+            "⚠️ Jelenleg nincsenek nyitott "
+            "várótermek!",
             ephemeral=True
         )
 
@@ -2028,8 +1995,12 @@ async def everyone_cmd(
 
             sent_count += 1
 
-        except Exception:
-            pass
+        except Exception as e:
+
+            print(
+                f"⚠️ Váróterem üzenetküldési hiba: "
+                f"{channel.name} | {e}"
+            )
 
     await interaction.response.send_message(
         f"✅ Az üzenet kiküldve "
@@ -2057,13 +2028,21 @@ async def create_faction_structure(
     guild = interaction.guild
 
     if guild is None:
-        return
-
-    if not has_admin_access(interaction):
 
         await interaction.response.send_message(
-            "❌ Ezt csak **admin vagy a szerver tulajdonosa** "
-            "használhatja!",
+            "❌ Ez csak Discord szerveren használható!",
+            ephemeral=True
+        )
+
+        return
+
+    if not has_admin_access(
+        interaction
+    ):
+
+        await interaction.response.send_message(
+            "❌ Ezt csak **admin vagy a szerver "
+            "tulajdonosa** használhatja!",
             ephemeral=True
         )
 
@@ -2073,122 +2052,171 @@ async def create_faction_structure(
         ephemeral=True
     )
 
-    # =====================================================
-    # 🎖️ RANG
-    # =====================================================
+    try:
 
-    member_role = discord.utils.get(
-        guild.roles,
-        name=member_role_name
-    )
+        # =================================================
+        # 🎖️ TAG RANG
+        # =================================================
 
-    if member_role is None:
-
-        member_role = await guild.create_role(
-            name=member_role_name,
-            color=member_color,
-            reason=f"{success_name} frakció létrehozása"
+        member_role = discord.utils.get(
+            guild.roles,
+            name=member_role_name
         )
 
-    leader_role = discord.utils.get(
-        guild.roles,
-        name=leader_role_name
-    )
+        if member_role is None:
 
-    if leader_role is None:
-
-        leader_role = await guild.create_role(
-            name=leader_role_name,
-            color=leader_color,
-            reason=f"{success_name} vezetőség létrehozása"
-        )
-
-    # =====================================================
-    # 🔐 JOGOSULTSÁG
-    # =====================================================
-
-    overwrites = {
-
-        guild.default_role:
-            discord.PermissionOverwrite(
-                view_channel=False
-            ),
-
-        member_role:
-            discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
-            ),
-
-        leader_role:
-            discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                manage_messages=True
+            member_role = await guild.create_role(
+                name=member_role_name,
+                color=member_color,
+                reason=(
+                    f"{success_name} "
+                    f"frakció létrehozása"
+                )
             )
-    }
 
-    # =====================================================
-    # 📁 KATEGÓRIA
-    # =====================================================
+        # =================================================
+        # 👑 VEZETŐSÉGI RANG
+        # =================================================
 
-    category = discord.utils.get(
-        guild.categories,
-        name=category_name
-    )
-
-    if category is None:
-
-        category = await guild.create_category(
-            category_name,
-            overwrites=overwrites,
-            reason=f"{success_name} frakció létrehozása"
+        leader_role = discord.utils.get(
+            guild.roles,
+            name=leader_role_name
         )
 
-    else:
+        if leader_role is None:
 
-        await category.edit(
-            overwrites=overwrites
+            leader_role = await guild.create_role(
+                name=leader_role_name,
+                color=leader_color,
+                reason=(
+                    f"{success_name} "
+                    f"vezetőség létrehozása"
+                )
+            )
+
+        # =================================================
+        # 🔐 JOGOSULTSÁG
+        # =================================================
+
+        overwrites = {
+
+            guild.default_role:
+                discord.PermissionOverwrite(
+                    view_channel=False
+                ),
+
+            member_role:
+                discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True
+                ),
+
+            leader_role:
+                discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    manage_messages=True
+                )
+        }
+
+        # =================================================
+        # 📁 KATEGÓRIA
+        # =================================================
+
+        category = discord.utils.get(
+            guild.categories,
+            name=category_name
         )
 
-    created = 0
-    existing = 0
+        if category is None:
 
-    # =====================================================
-    # 📋 CSATORNÁK
-    # =====================================================
+            category = await guild.create_category(
+                category_name,
+                overwrites=overwrites,
+                reason=(
+                    f"{success_name} "
+                    f"frakció létrehozása"
+                )
+            )
 
-    for channel_name, topic in channels:
+        else:
 
-        existing_channel = discord.utils.get(
-            category.text_channels,
-            name=channel_name
+            await category.edit(
+                overwrites=overwrites
+            )
+
+        created = 0
+        existing = 0
+
+        # =================================================
+        # 📋 CSATORNÁK
+        # =================================================
+
+        for channel_name, topic in channels:
+
+            existing_channel = discord.utils.get(
+                category.text_channels,
+                name=channel_name
+            )
+
+            if existing_channel is not None:
+
+                existing += 1
+
+                continue
+
+            await category.create_text_channel(
+                name=channel_name,
+                topic=topic,
+                reason=(
+                    f"{success_name} frakció"
+                )
+            )
+
+            created += 1
+
+        await interaction.followup.send(
+            f"{icon} **{success_name} frakció "
+            f"elkészült!**\n\n"
+            f"📁 Kategória: {category.mention}\n"
+            f"🎖️ Rang: **{member_role.name}**\n"
+            f"👑 Vezetőség: "
+            f"**{leader_role.name}**\n"
+            f"🆕 Új csatornák: **{created}**\n"
+            f"📂 Már létezett: **{existing}**",
+            ephemeral=True
         )
 
-        if existing_channel is not None:
+    except discord.Forbidden:
 
-            existing += 1
-            continue
-
-        await category.create_text_channel(
-            name=channel_name,
-            topic=topic,
-            reason=f"{success_name} frakció"
+        await interaction.followup.send(
+            "❌ A botnak nincs megfelelő "
+            "jogosultsága a frakció létrehozásához.",
+            ephemeral=True
         )
 
-        created += 1
+    except discord.HTTPException as e:
 
-    await interaction.followup.send(
-        f"{icon} **{success_name} frakció elkészült!**\n\n"
-        f"📁 Kategória: {category.mention}\n"
-        f"🎖️ Rang: **{member_role.name}**\n"
-        f"👑 Vezetőség: **{leader_role.name}**\n"
-        f"🆕 Új csatornák: **{created}**\n"
-        f"📂 Már létezett: **{existing}**",
-        ephemeral=True
-    )
+        await interaction.followup.send(
+            f"❌ Discord hiba történt: `{e}`",
+            ephemeral=True
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ {success_name} hiba: "
+            f"{type(e).__name__}: {e}"
+        )
+
+        await interaction.followup.send(
+            f"❌ Hiba történt: "
+            f"`{type(e).__name__}`\n"
+            "Nézd meg a Render logját.",
+            ephemeral=True
+        )
 
 
 # =========================================================
@@ -2461,15 +2489,301 @@ async def frakcio_szerelo(
 
 
 # =========================================================
+# ❌ SLASH PARANCS HIBAKEZELÉS
+# =========================================================
+
+@bot.tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction,
+    error: app_commands.AppCommandError
+):
+
+    print(
+        f"❌ SLASH COMMAND HIBA: "
+        f"{type(error).__name__}: {error}"
+    )
+
+    message = (
+        "❌ Hiba történt a parancs végrehajtásakor.\n"
+        "Nézd meg a Render logját a pontos hibáért."
+    )
+
+    try:
+
+        if interaction.response.is_done():
+
+            await interaction.followup.send(
+                message,
+                ephemeral=True
+            )
+
+        else:
+
+            await interaction.response.send_message(
+                message,
+                ephemeral=True
+            )
+
+    except Exception as e:
+
+        print(
+            f"❌ Hibaüzenet küldési hiba: {e}"
+        )
+
+
+# =========================================================
+# 🔄 SLASH PARANCSOK SZINKRONIZÁLÁSA
+# =========================================================
+
+async def sync_guild_commands():
+
+    global _commands_synced
+
+    if _commands_synced:
+
+        return
+
+    if not bot.guilds:
+
+        print(
+            "⚠️ A bot jelenleg egyetlen szerveren sincs."
+        )
+
+        return
+
+    success = True
+
+    print(
+        "🔄 Slash parancsok szinkronizálása..."
+    )
+
+    print(
+        f"📦 Regisztrált parancsok száma: "
+        f"{len(bot.tree.get_commands())}"
+    )
+
+    for guild in bot.guilds:
+
+        try:
+
+            # A globális parancsokat bemásoljuk
+            # közvetlenül az adott szerverre.
+            bot.tree.copy_global_to(
+                guild=guild
+            )
+
+            synced = await bot.tree.sync(
+                guild=guild
+            )
+
+            command_names = [
+                command.name
+                for command in synced
+            ]
+
+            print(
+                f"✅ {guild.name} | "
+                f"{len(synced)} slash parancs "
+                f"szinkronizálva."
+            )
+
+            print(
+                f"   📋 Parancsok: "
+                f"{', '.join(command_names)}"
+            )
+
+        except Exception as e:
+
+            success = False
+
+            print(
+                f"❌ Slash sync hiba: "
+                f"{guild.name} | "
+                f"{type(e).__name__}: {e}"
+            )
+
+    if success:
+
+        _commands_synced = True
+
+        print(
+            "✅ AZ ÖSSZES SLASH PARANCS "
+            "SZINKRONIZÁLVA!"
+        )
+
+    else:
+
+        print(
+            "⚠️ Néhány slash parancs "
+            "szinkronizálása nem sikerült."
+        )
+
+
+# =========================================================
+# 🔘 RÉGI GOMBOK VISSZATÖLTÉSE
+# =========================================================
+
+async def load_persistent_views():
+
+    global _views_loaded
+
+    if _views_loaded:
+
+        return
+
+    # =====================================================
+    # ⏰ DUTY
+    # =====================================================
+
+    try:
+
+        bot.add_view(
+            DutyView()
+        )
+
+        print(
+            "✅ DutyView betöltve."
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ DutyView hiba: {e}"
+        )
+
+    # =====================================================
+    # 📋 JELENTKEZÉSI GOMBOK
+    # =====================================================
+
+    for guild in bot.guilds:
+
+        waiting_category = discord.utils.get(
+            guild.categories,
+            name="🚪 VÁRÓTERMEK"
+        )
+
+        if waiting_category is None:
+
+            continue
+
+        for channel in waiting_category.text_channels:
+
+            if not channel.topic:
+
+                continue
+
+            prefix = (
+                "FRAKCIOS_JELENTKEZES:"
+            )
+
+            if not channel.topic.startswith(
+                prefix
+            ):
+
+                continue
+
+            try:
+
+                member_id = int(
+                    channel.topic[
+                        len(prefix):
+                    ]
+                )
+
+            except ValueError:
+
+                continue
+
+            try:
+
+                bot.add_view(
+                    AcceptView(
+                        member_id,
+                        channel.id
+                    )
+                )
+
+                print(
+                    f"✅ Jelentkezési gomb "
+                    f"betöltve: {channel.name}"
+                )
+
+            except Exception as e:
+
+                print(
+                    f"⚠️ Gomb betöltési hiba: "
+                    f"{channel.name} | {e}"
+                )
+
+    _views_loaded = True
+
+    print(
+        "✅ Minden tartós gomb betöltve."
+    )
+
+
+# =========================================================
+# 🟢 ON READY
+# =========================================================
+
+@bot.event
+async def on_ready():
+
+    print(
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+    print(
+        f"🟢 BEJELENTKEZVE: {bot.user}"
+    )
+
+    print(
+        f"🆔 Bot ID: {bot.user.id}"
+    )
+
+    print(
+        f"🌐 Szerverek száma: "
+        f"{len(bot.guilds)}"
+    )
+
+    print(
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+    # =====================================================
+    # 🔄 SLASH COMMAND SYNC
+    # =====================================================
+
+    await sync_guild_commands()
+
+    # =====================================================
+    # 🔘 PERSISTENT VIEWS
+    # =====================================================
+
+    await load_persistent_views()
+
+    print(
+        "🚀 BOT TELJESEN ELINDULT!"
+    )
+
+    print(
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+
+# =========================================================
 # 🚀 BOT INDÍTÁSA
 # =========================================================
 
-token = os.environ.get("DISCORD_TOKEN")
+token = os.environ.get(
+    "DISCORD_TOKEN"
+)
 
 if not token:
 
     print(
-        "❌ HIBA: A DISCORD_TOKEN környezeti változó nincs beállítva!"
+        "❌ HIBA: A DISCORD_TOKEN "
+        "környezeti változó nincs beállítva!"
     )
 
 else:
